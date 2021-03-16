@@ -75,7 +75,8 @@ size_t *parallel_sort_any_dim_discordant(
 		size_t headerSize,
 		char* header,
 		char *chrNames,
-		size_t *disc_dup_number
+		size_t *disc_dup_number,
+		int write_format
 		){
 
 	size_t k, j;
@@ -760,7 +761,8 @@ size_t *parallel_sort_any_dim_discordant(
 												local_rank_sorted,
 												local_data,
 												start_offset_in_file,
-												disc_dup_number
+												disc_dup_number,
+												write_format
 												);
 
 	return disc_dup_offset_source;
@@ -787,7 +789,8 @@ void parallel_sort_any_dim(
 		char* header,
 		char *chrNames,
 		size_t *disc_dup_offset_source,
-		size_t *disc_dup_number){
+		size_t *disc_dup_number,
+		int write_format){
 
 	size_t k, j;
 	int j2;
@@ -1468,6 +1471,7 @@ void parallel_sort_any_dim(
 			local_data,
 			start_offset_in_file,
 			disc_dup_offset_source,
-    		disc_dup_number
+    		disc_dup_number,
+			write_format
 			);
 }

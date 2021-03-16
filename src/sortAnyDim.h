@@ -59,7 +59,8 @@ void parallel_sort_any_dim(						//dimensions for parabitonic
 		char* header,
 		char *chrName,
 		size_t *disc_dup_offset_source,
-		size_t *disc_dup_number
+		size_t *disc_dup_number,
+		int write_format
 		);
 
 
@@ -82,5 +83,6 @@ size_t *parallel_sort_any_dim_discordant(						//dimensions for parabitonic
 		size_t headerSize,
 		char* header,
 		char *chrName,		
-		size_t *disc_dup_number 
+		size_t *disc_dup_number,
+		int write_format
 		);

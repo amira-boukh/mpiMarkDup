@@ -167,10 +167,11 @@ int main (int argc, char *argv[]) {
     threshold = 0;
     opticalDistance = 0;
     int logSeverity = -1;
+    int write_format = 0; 
 
     /* Check command line */
     /* Check command line */
-    while ((i = getopt(argc, argv, "c:hnpq:d:v:")) != -1) { //retourne le prochain caractère d'option dans argv qui concorde le caractère dans optstring
+    while ((i = getopt(argc, argv, "c:hnpq:d:v:gsb")) != -1) { //retourne le prochain caractère d'option dans argv qui concorde le caractère dans optstring
         switch (i) {
             case 'c': /* Compression level */
                 compression_level = atoi(optarg); //convert stringArgument to an integer
@@ -196,6 +197,15 @@ int main (int argc, char *argv[]) {
             case 'v':
                 logSeverity = atoi(optarg);
                 break;
+            case 'g':
+				write_format = 0;
+				break;
+            case 'b':
+				write_format = 1;
+				break;
+			case 's':
+				write_format = 2;
+				break;
 
             default:
                 usage(basename(*argv));
@@ -711,7 +721,8 @@ int main (int argc, char *argv[]) {
                         finfo,
                         compression_level,
                         local_data,
-                        goff[rank]);
+                        goff[rank],
+                        write_format);
 
                         //if (split_rank == chosen_rank) {
                         //    fprintf(stderr, "rank %d :::::[MPISORT] Time to write chromosom %s ,  %f seconds \n\n\n", split_rank, chrNames[nbchr - s], MPI_Wtime() - time_count);
@@ -1788,7 +1799,8 @@ int main (int argc, char *argv[]) {
                                                             goff[rank],
                                                             first_local_readNum,
                                         		            final_local_readNum,
-                                                            local_disc_duplicate_number
+                                                            local_disc_duplicate_number,
+                                                            write_format
                                                         );
 
                     /*
@@ -1904,7 +1916,8 @@ int main (int argc, char *argv[]) {
                         first_local_readNum,
                         final_local_readNum,
                         all_disc_duplicate_offset_source,
-                        total_disc_duplicates
+                        total_disc_duplicates,
+                        write_format
                     );
 
                 }
@@ -1945,7 +1958,8 @@ int main (int argc, char *argv[]) {
                                                                     headerSize,
                                                                     header,
                                                                     chrNames[i],
-                                                                    local_disc_duplicate_number
+                                                                    local_disc_duplicate_number,
+                                                                    write_format
                                                                     );
                     /*
                         Now we exchange every local_disc_duplicate_offset_source
@@ -2049,7 +2063,8 @@ int main (int argc, char *argv[]) {
                                             header,
                                             chrNames[i],
                                             all_disc_duplicate_offset_source,
-                                            total_disc_duplicates
+                                            total_disc_duplicates,
+                                            write_format
                                             );
                 }
 

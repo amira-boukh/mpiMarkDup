@@ -61,7 +61,8 @@ void writeSam(
 		size_t original_local_readNum,
 		size_t final_local_readNum,
 		size_t *disc_dup_offset_source,
-    	size_t *disc_dup_number
+    	size_t *disc_dup_number,
+		int write_format
 		);
 
 size_t *writeSam_discordant(
@@ -86,7 +87,8 @@ size_t *writeSam_discordant(
     size_t start_offset_in_file,
     size_t previous_local_readNum,
     size_t final_local_readNum,
-    size_t *disc_dup_number
+    size_t *disc_dup_number,
+	int write_format
 );
 
 
@@ -289,7 +291,8 @@ void writeSam_unmapped(int split_rank,
 									  MPI_Info finfo, 
 									  int compression_level, 
 									  char *data,
-									  size_t offset_data_in_file);
+									  size_t offset_data_in_file,
+									  int write_format);
 
 
 
@@ -313,7 +316,8 @@ size_t *writeSam_any_dim_discordant(
 		int* new_rank,
 		char *data,
 		size_t start_offset_in_file,
-		size_t *disc_dup_number
+		size_t *disc_dup_number,
+		int write_format
 		);
 
 
@@ -339,7 +343,8 @@ void writeSam_any_dim(
 		char *data,
 		size_t start_offset_in_file,
 		size_t *disc_dup_offset_source,
-        size_t *disc_dup_number
+        size_t *disc_dup_number,
+		int write_format
 		);
 
 #endif
