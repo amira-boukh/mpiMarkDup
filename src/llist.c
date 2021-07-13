@@ -138,6 +138,20 @@ endCompare:
 }
 
 /**
+ * @date 2021 July 6
+ * @brief Compare two paired-end by their Qname key
+ * @details This function is used to determine the order of the insertion in List.
+ * @param[in] read1 first read in one pair
+ * @param[in] read2 first read in another pair
+ * @param[in] isFragment These reads are fragments ? 
+ */
+
+int compareRead_qnameKey(readInfo *read1, readInfo *read2) {
+    int compareDifferance = read1->qname_key - read2->qname_key; 
+    return compareDifferance;
+}
+
+/**
  * @date 2018 Apr. 19
  * @brief Allocate and initialize a circular linked list.
  * @return a list initialized
@@ -528,3 +542,139 @@ void llist_merge_sort(llist_t *llist, const int isFragment) {
         insize *= 2;
     }
 }
+
+/**
+ * @date 2021 July 6
+ * @brief Merge sort for circular doubly linked list
+ * @param[in, out] l a circular doubly linked list
+ * @note Adapted from 
+ *  https://www.chiark.greenend.org.uk/~sgtatham/algorithms/listsort.html
+ */
+
+void llist_merge_sort_qnames(llist_t *llist) {
+    lnode_t *p, *q, *e, *tail, *oldhead, *list = llist->head;
+    int insize, nmerges, psize, qsize, i;
+
+    if (llist->size == 0) {
+        return ;
+    }
+
+    insize = 1;
+
+    // relinkage : avoid dummy node
+    llist->tail->next = llist->head;
+    llist->head->prev = llist->tail;
+
+    while (1) {
+        p = list;
+        oldhead = list; /* only used for circular linkage */
+        list = NULL;
+        tail = NULL;
+
+        nmerges = 0;   /* count number of merges we do in this pass */
+
+        while (p) {
+            nmerges++;  /* there exists a merge to be done */
+            /* step `insize' places along from p */
+            q = p;
+            psize = 0;
+
+            for (i = 0; i < insize; i++) {
+                psize++;
+
+                q = (q->next == oldhead ? NULL : q->next);
+
+                if (!q) {
+                    break;
+                }
+            }
+
+            /* if q hasn't fallen off end, we have two lists to merge */
+            qsize = insize;
+
+            /* now we have two lists; merge them */
+            while (psize > 0 || (qsize > 0 && q)) {
+
+                /* decide whether next lnode_t of merge comes from p or q */
+                if (psize == 0) {
+                    /* p is empty; e must come from q. */
+                    e = q;
+                    q = q->next;
+                    qsize--;
+
+                    if (q == oldhead) {
+                        q = NULL;
+                    }
+
+                } else if (qsize == 0 || !q) {
+                    /* q is empty; e must come from p. */
+                    e = p;
+                    p = p->next;
+                    psize--;
+
+                    if (p == oldhead) {
+                        p = NULL;
+                    }
+
+                } else if (compareRead_qnameKey(p->read, q->read) <= 0) {
+                    /* First lnode_t of p is lower (or same);
+                     * e must come from p. */
+                    e = p;
+                    p = p->next;
+                    psize--;
+
+                    if (p == oldhead) {
+                        p = NULL;
+                    }
+
+                } else {
+                    /* First lnode_t of q is lower; e must come from q. */
+                    e = q;
+                    q = q->next;
+                    qsize--;
+
+                    if (q == oldhead) {
+                        q = NULL;
+                    }
+                }
+
+                /* add the next lnode_t to the merged list */
+                if (tail) {
+                    tail->next = e;
+
+                } else {
+                    list = e;
+                }
+
+                /* Maintain reverse pointers in a doubly linked list. */
+                e->prev = tail;
+
+                tail = e;
+            }
+
+            /* now p has stepped `insize' places along, and q has too */
+            p = q;
+        }
+
+        tail->next = list;
+
+        list->prev = tail;
+
+
+        /* If we have done only one merge, we're finished. */
+        if (nmerges <= 1) { /* allow for nmerges==0, the empty list case */
+            // relinkage with dummy node
+            llist->head = list;
+            llist->tail = tail;
+            llist->tail->next = llist->nil;
+            llist->head->prev = llist->nil;
+            llist->nil->next = llist->head;
+            llist->nil->prev = llist->tail;
+            return ;
+        }
+
+        /* Otherwise repeat, merging lists twice the size */
+        insize *= 2;
+    }
+}
+

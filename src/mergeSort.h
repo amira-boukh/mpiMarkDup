@@ -29,7 +29,8 @@
 #include <stdlib.h>
 
 #include "parser.h"
+#include "reads.h"
 
 
-Read* mergeSort(Read* c, size_t n);
-Read* structMerge(Read* c, size_t p, Read* d, size_t q);
+readInfo* mergeSort(readInfo* c, size_t n);
+readInfo* structMerge(readInfo* c, size_t p, readInfo* d, size_t q);

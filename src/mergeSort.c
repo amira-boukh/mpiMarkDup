@@ -30,10 +30,11 @@
 #endif
 
 #include "mergeSort.h"
+#include "reads.h"
 
-Read *mergeSort(Read *c, size_t n) {
+readInfo *mergeSort(readInfo *c, size_t n) {
     size_t q, p;
-    Read *d;
+    readInfo *d;
 
     q = n / 2;
     p = n - q;
@@ -54,13 +55,13 @@ Read *mergeSort(Read *c, size_t n) {
     return d;
 }
 
-Read *structMerge(Read *c, size_t p, Read *d, size_t q) {
+readInfo *structMerge(readInfo *c, size_t p, readInfo *d, size_t q) {
 
-    Read *t;
+    readInfo *t;
 
     while (1) {
 
-        if (c->next->coord > d->next->coord) {
+        if (c->next->coordPos > d->next->coordPos) {
             t = d->next;
             d->next = t->next;
             t->next = c->next;

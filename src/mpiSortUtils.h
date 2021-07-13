@@ -30,16 +30,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include "reads.h"
 
 void get_coordinates_and_offset_source_and_size_and_free_reads(
-		int rank,
-		int *local_read_rank,
-		size_t *coordinates,
-		size_t* offset,
-		int* size,
-		Read* data_chr,
-		size_t local_readNum
-		);
+	int rank, 
+	int *local_read_rank, 
+	size_t *coordinates, 
+	size_t* offset, 
+	int* size, 
+	readInfo* data_chr, 
+	size_t local_readNum);
+
+void get_mate_informations(
+	int rank, 
+	int *mate_rank,
+	readInfo *data_chr,
+	size_t local_readNum,
+	size_t *mate_coordinates, 
+	int *mates_scores, 
+	int *qname_keys, 
+	unsigned int *flags, 
+	unsigned int *pair_nums, 
+	unsigned int *orientations, 
+	int *read_lb, 
+	int *chr_names, 
+	int *mates_chr_names,
+	int *positions_x,
+	int *positions_y,
+	size_t *unclipped_positions);
+
 
 size_t init_coordinates_and_size(
 		int rank,
@@ -47,7 +66,7 @@ size_t init_coordinates_and_size(
 		size_t *local_reads_index,
 		size_t* coordinates,
 		int* size,
-		Read* data_chr,
+		readInfo* data_chr,
 		size_t local_readNum
 		);
 

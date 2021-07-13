@@ -37,6 +37,7 @@
 #include "qksort.h"
 #include "writeUtils.h"
 #include "parallelBitonicSort.h"
+#include "reads.h"
 
 
 void parallel_sort_any_dim(						//dimensions for parabitonic
@@ -44,7 +45,7 @@ void parallel_sort_any_dim(						//dimensions for parabitonic
 		size_t local_readNum,
 		int split_rank,
 		int split_size,
-		Read **reads,
+		readInfo **reads,
 		int i, 									//chromosom number
 		int chosen_split_rank,
 		MPI_Comm split_comm,
@@ -60,7 +61,8 @@ void parallel_sort_any_dim(						//dimensions for parabitonic
 		char *chrName,
 		size_t *disc_dup_offset_source,
 		size_t *disc_dup_number,
-		int write_format
+		int write_format,
+		readInfo* chr
 		);
 
 
@@ -69,7 +71,7 @@ size_t *parallel_sort_any_dim_discordant(						//dimensions for parabitonic
 		size_t local_readNum,
 		int split_rank,
 		int split_size,
-		Read **reads,
+		readInfo **reads,
 		int i, 									//chromosom number
 		int chosen_split_rank,
 		MPI_Comm split_comm,
@@ -84,5 +86,6 @@ size_t *parallel_sort_any_dim_discordant(						//dimensions for parabitonic
 		char* header,
 		char *chrName,		
 		size_t *disc_dup_number,
-		int write_format
+		int write_format, 
+		readInfo* chr
 		);

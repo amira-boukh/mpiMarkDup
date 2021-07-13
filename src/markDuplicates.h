@@ -105,7 +105,30 @@ char *markDuplicate (char *bufferReads,
                     MPI_Comm comm, 
                     size_t *buffer_read_offset_source,
                     size_t *all_discord_dup_offset, 
-                    size_t *total_disc_dup);
+                    size_t *total_disc_dup, 
+                    readInfo* reads);
+
+char *markDuplicate2 (char *bufferReads, 
+                    size_t readNum, 
+                    char *header, 
+                    MPI_Comm comm, 
+                    size_t *sam_reads_offset_source,
+                    size_t *all_discord_dup_offset, 
+                    size_t *total_disc_dup,
+                    int *qname_keys,
+                    unsigned int *flags,
+                    unsigned int *pair_nums,
+                    unsigned int *orientations,
+                    int *mate_scores,
+                    int *read_Lb,
+                    int *chr_names,
+                    int *chr_mate_names,
+                    int *physical_location_x, 
+                    int *physical_location_y,
+                    size_t *mate_coordinates,
+                    size_t *coordinates,
+                    size_t *unclipped_coordinates, 
+                    readInfo* reads);
 
 int markMateDuplicateFlag(hashTable *htbl, readInfo *read, int d);
 char* writeBuff(char **samTokenLines, readInfo **readArr, size_t readNum);

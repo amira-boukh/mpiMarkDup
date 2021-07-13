@@ -61,7 +61,7 @@ size_t *parallel_sort_any_dim_discordant(
 		size_t local_readNum,
 		int split_rank,
 		int split_size,
-		Read **reads,
+		readInfo **reads,
 		int i, //chromosom number
 		int chosen_split_rank,
 		MPI_Comm split_comm,
@@ -76,7 +76,8 @@ size_t *parallel_sort_any_dim_discordant(
 		char* header,
 		char *chrNames,
 		size_t *disc_dup_number,
-		int write_format
+		int write_format, 
+		readInfo* chr
 		){
 
 	size_t k, j;
@@ -762,7 +763,8 @@ size_t *parallel_sort_any_dim_discordant(
 												local_data,
 												start_offset_in_file,
 												disc_dup_number,
-												write_format
+												write_format, 
+												chr
 												);
 
 	return disc_dup_offset_source;
@@ -774,7 +776,7 @@ void parallel_sort_any_dim(
 		size_t local_readNum,
 		int split_rank,
 		int split_size,
-		Read **reads,
+		readInfo **reads,
 		int i, //chromosom number
 		int chosen_split_rank,
 		MPI_Comm split_comm,
@@ -790,7 +792,8 @@ void parallel_sort_any_dim(
 		char *chrNames,
 		size_t *disc_dup_offset_source,
 		size_t *disc_dup_number,
-		int write_format){
+		int write_format, 
+		readInfo* chr){
 
 	size_t k, j;
 	int j2;
@@ -1472,6 +1475,7 @@ void parallel_sort_any_dim(
 			start_offset_in_file,
 			disc_dup_offset_source,
     		disc_dup_number,
-			write_format
+			write_format,
+			chr
 			);
 }

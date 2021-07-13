@@ -37,6 +37,7 @@
 
 #include "tokenizer.h"
 #include "time.h"
+#include "reads.h"
 
 #define MAX_LINE_SIZE 2048
 #define UNMAPPED "unmapped"
@@ -104,7 +105,7 @@ void init_goff(MPI_File mpi_filed,unsigned int headerSize,size_t fsize,int numpr
  * \param chrNames Reference array to the chromosomes names.
  * \param preads The reads linked list. Will be set in this function.
  */
-void parser_paired(char *localData, int rank, size_t start_offset, unsigned char threshold,int nbchrom, size_t **preadNumberByChr, char ** chrNames, Read ***preads);
+void parser_paired(char *localData, int rank, size_t start_offset, unsigned char threshold,int nbchrom, size_t **preadNumberByChr, char ** chrNames, readInfo ***preads, int optical_distance, char* header);
 
 /**
  * \brief Extract integer number of current chromosome given as a string

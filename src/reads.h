@@ -37,7 +37,8 @@ typedef struct readInfo {
     
 
     char *Qname;                            /**< read name, TODO:we don't need to store Qname, we just use it to compte physical location for optical duplicates */
-    char *cigar;                            /**< cigar string, TODO:we don't need to store cigar, we just use it to compute unclipped coordinate */
+    char *cigar;  
+    char *mate_cigar;                          /**< cigar string, TODO:we don't need to store cigar, we just use it to compute unclipped coordinate */
     
                                             /**< mate chromosome number */
                  
@@ -56,7 +57,12 @@ typedef struct readInfo {
     int readLb;                      /**< read library number */
     int pairPhredScore;              /**< paired-end phred score */
     int readChromosome;              /**< read chromosome number */
-    int mateChromosome; 
+    int mateChromosome;
+    int qname_key;
+    char quality; 
+    size_t offset_source_file;
+	size_t offset;
+    int mate_score; 
 
     size_t fingerprint;    /**< MD5 of the Qname + number in pair */
     size_t mate_fingerprint;
@@ -68,6 +74,8 @@ typedef struct readInfo {
     size_t offset_source_sam;           // offset of the duplicate in the source file 
     coord physicalLocation;             /**< read physical location (in QNAME) */
     //orientation orientation;            /**< fragment or paired-end orientation (reverse strand + first/second in pair) */
+    struct readInfo* next;
+	struct readInfo* link;
 
 } readInfo;
 

@@ -52,11 +52,13 @@ typedef struct llist_t {
 } llist_t;
 
 int compareRead(readInfo *read1, readInfo *read2, const int isFragment) ;
+int compareRead_qnameKey(readInfo *read1, readInfo *read2);
 llist_t*  llist_create();
 void llist_clear(llist_t *l) ;
 lnode_t *llist_append(llist_t *l, readInfo *e) ;
 void  llist_destruct(llist_t* l);
 void llist_merge_sort(llist_t* llist, const int isFragment) ;
+void llist_merge_sort_qnames(llist_t *llist);
 lnode_t *llist_insert_node(llist_t *l, lnode_t* lnode, readInfo *e) ;
 lnode_t*  llist_insert_index(llist_t* l, int n, readInfo* e);
 readInfo* llist_delete_ptr(llist_t *l, lnode_t* p) ;

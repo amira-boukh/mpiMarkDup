@@ -59,6 +59,7 @@
 #include "qksort.h"
 #include "parallelBitonicSort2.h"
 #include "parallelBitonicSort3.h"
+#include "reads.h"
 
 #include "log.h"
 
@@ -154,7 +155,7 @@ int main (int argc, char *argv[]) {
     size_t *readNumberByChr = NULL, *localReadNumberByChr = NULL;
     double time_count;
     double toc;
-    Read **reads;    
+    readInfo **reads;    
     MPI_Comm split_comm; //used to split communication when jobs have no reads to sort
     const char *sort_name;
     MPI_Info finfo;
@@ -403,15 +404,15 @@ int main (int argc, char *argv[]) {
     size_t poffset = goff[rank]; //Current offset in file sam
 
     //nbchr because we add the discordant reads in the structure
-    reads = (Read **)malloc((nbchr) * sizeof(Read)); //We allocate a linked list of struct for each Chromosome (last chr = unmapped reads)
+    reads = (readInfo **)malloc((nbchr) * sizeof(readInfo)); //We allocate a linked list of struct for each Chromosome (last chr = unmapped reads)
     readNumberByChr = (size_t *)malloc((nbchr) * sizeof(size_t)); //Array with the number of reads found in each chromosome
     localReadNumberByChr = (size_t *)malloc((nbchr) * sizeof(size_t)); //Array with the number of reads found in each chromosome
-    Read **anchor = (Read **)malloc((nbchr) * sizeof(Read)); //Pointer on the first read of each chromosome
+    readInfo **anchor = (readInfo **)malloc((nbchr) * sizeof(readInfo)); //Pointer on the first read of each chromosome
 
     //Init first read
     for (i = 0; i < (nbchr); i++) {
-        reads[i] = malloc(sizeof(Read));
-        reads[i]->coord = 0;
+        reads[i] = malloc(sizeof(readInfo));
+        reads[i]->coordPos = 0;
         anchor[i] = reads[i];
         readNumberByChr[i] = 0;
     }
@@ -467,7 +468,7 @@ int main (int argc, char *argv[]) {
 
         //Now we parse Read in local_data
 
-        parser_paired(local_data_tmp, rank, poffset, threshold, nbchr, &readNumberByChr, chrNames, &reads);
+        parser_paired(local_data_tmp, rank, poffset, threshold, nbchr, &readNumberByChr, chrNames, &reads, opticalDistance, header);
 
         //now we copy local_data_tmp in local_data
         char *p = local_data_tmp;
@@ -731,7 +732,7 @@ int main (int argc, char *argv[]) {
 
                     
                     while (reads[i]->next != NULL) {
-                        Read *tmp_chr = reads[i];
+                        readInfo *tmp_chr = reads[i];
                         reads[i] = reads[i]->next;
                         free(tmp_chr);
                     }
@@ -1061,6 +1062,34 @@ int main (int argc, char *argv[]) {
                 int *local_source_rank_unsorted             = calloc(local_readNum, sizeof(int));
                 int *local_source_rank_sorted               = calloc(local_readNum, sizeof(int));
 
+                int *read_Qname_keys = calloc(local_readNum, sizeof(int));
+                int *read_Qname_keys_sorted = calloc(local_readNum, sizeof(int));
+                unsigned int *read_flags = calloc(local_readNum, sizeof(unsigned int));
+                unsigned int *read_flags_sorted = calloc(local_readNum, sizeof(unsigned int));
+                unsigned int *read_pair_nums = calloc(local_readNum, sizeof(unsigned int));
+                unsigned int *read_pair_nums_sorted = calloc(local_readNum, sizeof(unsigned int));
+                unsigned int *read_orientations = calloc(local_readNum, sizeof(unsigned int));
+                unsigned int *read_orientations_sorted = calloc(local_readNum, sizeof(unsigned int));
+                int *read_mate_scores = calloc(local_readNum, sizeof(int));
+                int *read_mate_scores_sorted = calloc(local_readNum, sizeof(int));
+                int *read_Lb = calloc(local_readNum, sizeof(int));
+                int *read_Lb_sorted = calloc(local_readNum, sizeof(int));
+                int *read_chr_names = calloc(local_readNum, sizeof(int));
+                int *read_chr_names_sorted = calloc(local_readNum, sizeof(int));
+                int *read_chr_mate_names = calloc(local_readNum, sizeof(int));
+                int *read_chr_mate_names_sorted = calloc(local_readNum, sizeof(int));
+                int *read_mate_ranks = calloc(local_readNum, sizeof(int)); 
+                int *read_mate_ranks_sorted = calloc(local_readNum, sizeof(int)); 
+                int *read_physical_location_x = calloc(local_readNum, sizeof(int));
+                int *read_physical_location_x_sorted = calloc(local_readNum, sizeof(int));
+                int *read_physical_location_y = calloc(local_readNum, sizeof(int));
+                int *read_physical_location_y_sorted = calloc(local_readNum, sizeof(int));
+                size_t *read_mate_coordinates = calloc(local_readNum, sizeof(size_t));
+                size_t *read_mate_coordinates_sorted = calloc(local_readNum, sizeof(size_t));
+                size_t *read_unclipped_positions = calloc(local_readNum, sizeof(size_t));
+                size_t *read_unclipped_positions_sorted = calloc(local_readNum, sizeof(size_t));
+
+
                 //if (split_rank == chosen_split_rank) {
                 //    fprintf(stderr,   "rank %d :::::[MPISORT][MALLOC 1] time spent = %f s\n", split_rank, MPI_Wtime() - time_count);
                 //}
@@ -1079,6 +1108,34 @@ int main (int argc, char *argv[]) {
                 local_offset_source_unsorted[0]     = 0;
                 local_offset_source_sorted[0]       = 0;
 
+                read_Qname_keys[0] = 0;
+                read_Qname_keys_sorted[0] = 0;
+                read_flags[0] = 0;
+                read_flags_sorted[0] = 0;
+                read_pair_nums[0] = 0;
+                read_pair_nums_sorted[0] = 0;
+                read_orientations[0] = 0;
+                read_orientations_sorted[0] = 0;
+                read_mate_scores[0] = 0;
+                read_mate_scores_sorted[0] = 0;
+                read_Lb[0] = 0;
+                read_Lb_sorted[0] = 0;
+                read_chr_names[0] = 0;
+                read_chr_names_sorted[0] = 0;
+                read_chr_mate_names[0] = 0;
+                read_chr_mate_names_sorted[0] = 0;
+                read_mate_ranks[0] = 0; 
+                read_mate_ranks_sorted[0] = 0; 
+                read_mate_coordinates[0] = 0;
+                read_mate_coordinates_sorted[0] = 0;
+                read_physical_location_x[0] = 0;
+                read_physical_location_x_sorted[0] = 0;
+                read_physical_location_y[0] = 0;
+                read_physical_location_y_sorted[0] = 0;
+                read_unclipped_positions[0] = 0;
+                read_unclipped_positions_sorted[0] = 0;
+
+
                 //those vectors are the same that  local_..._sorted but without zero padding
                 size_t *local_reads_coordinates_sorted_trimmed      = NULL;
                 int *local_dest_rank_sorted_trimmed                 = NULL;
@@ -1086,6 +1143,20 @@ int main (int argc, char *argv[]) {
                 size_t *local_offset_source_sorted_trimmed          = NULL;
                 size_t *local_offset_dest_sorted_trimmed            = NULL;
                 int *local_source_rank_sorted_trimmed               = NULL;
+                int *read_Qname_keys_sorted_trimmed                 = NULL;
+                unsigned int *read_flags_sorted_trimmed             = NULL;
+                unsigned int *read_pair_nums_sorted_trimmed         = NULL;
+                unsigned int *read_orientations_sorted_trimmed      = NULL;
+                int *read_mate_scores_sorted_trimmed                = NULL;
+                int *read_Lb_sorted_trimmed                         = NULL;
+                int *read_chr_names_sorted_trimmed                  = NULL;
+                int *read_chr_mate_names_sorted_trimmed             = NULL;
+                int *read_mate_ranks_sorted_trimmed                 = NULL; 
+                int *read_physical_location_x_sorted_trimmed        = NULL;
+                int *read_physical_location_y_sorted_trimmed        = NULL;
+                size_t *read_mate_coordinates_sorted_trimmed        = NULL;
+                size_t *read_unclipped_positions_sorted_trimmed     = NULL;
+
 
                 //vectors used in the bruck just after the parabitonic sort
                 size_t *local_reads_coordinates_sorted_trimmed_for_bruck    = NULL;
@@ -1094,6 +1165,19 @@ int main (int argc, char *argv[]) {
                 size_t *local_offset_source_sorted_trimmed_for_bruck        = NULL;
                 size_t *local_offset_dest_sorted_trimmed_for_bruck          = NULL;
                 int *local_source_rank_sorted_trimmed_for_bruck             = NULL;
+                int *read_Qname_keys_sorted_trimmed_for_bruck               = NULL;
+                unsigned int *read_flags_sorted_trimmed_for_bruck           = NULL;
+                unsigned int *read_pair_nums_sorted_trimmed_for_bruck       = NULL;
+                unsigned int *read_orientations_sorted_trimmed_for_bruck    = NULL;
+                int *read_mate_scores_sorted_trimmed_for_bruck              = NULL;
+                int *read_Lb_sorted_trimmed_for_bruck                       = NULL;
+                int *read_chr_names_sorted_trimmed_for_bruck                = NULL;
+                int *read_chr_mate_names_sorted_trimmed_for_bruck           = NULL;
+                int *read_mate_ranks_sorted_trimmed_for_bruck               = NULL; 
+                int *read_physical_location_x_sorted_trimmed_for_bruck      = NULL;
+                int *read_physical_location_y_sorted_trimmed_for_bruck      = NULL;
+                size_t *read_mate_coordinates_sorted_trimmed_for_bruck      = NULL;
+                size_t *read_unclipped_positions_sorted_trimmed_for_bruck   = NULL;
 
                 //task Init offset and size for source - free chr
                 // from mpiSort_utils.c
@@ -1107,6 +1191,25 @@ int main (int argc, char *argv[]) {
                     local_reads_sizes_unsorted,//the line_size (we can get the end of the line with it)
                     reads[i],
                     first_local_readNum
+                );
+
+                get_mate_informations(
+                    split_rank,
+                    read_mate_ranks,
+                    reads[i],
+                    first_local_readNum,
+                    read_mate_coordinates,
+                    read_mate_scores,
+                    read_Qname_keys,
+                    read_flags,
+                    read_pair_nums,
+                    read_orientations,
+                    read_Lb,
+                    read_chr_names,
+                    read_chr_mate_names,
+                    read_physical_location_x,
+                    read_physical_location_y,
+                    read_unclipped_positions
                 );
 
                 //init indices for qksort
@@ -1146,6 +1249,19 @@ int main (int argc, char *argv[]) {
                     local_reads_sizes_sorted[j]                 = local_reads_sizes_unsorted[coord_index[j]];
                     local_offset_source_sorted[j]               = local_offset_source_unsorted[coord_index[j]];
                     local_dest_rank_sorted[j]                   = rank; //will be updated after sorting the coordinates
+                    read_Qname_keys_sorted[j]                   = read_Qname_keys[coord_index[j]];
+                    read_flags_sorted[j]                        = read_flags[coord_index[j]];
+                    read_pair_nums_sorted[j]                    = read_pair_nums[coord_index[j]];
+                    read_orientations_sorted[j]                 = read_orientations[coord_index[j]];
+                    read_mate_scores_sorted[j]                  = read_mate_scores[coord_index[j]];
+                    read_Lb_sorted[j]                           = read_Lb[coord_index[j]];
+                    read_chr_names_sorted[j]                    = read_chr_names[coord_index[j]];
+                    read_chr_mate_names_sorted[j]               = read_chr_mate_names[coord_index[j]];
+                    read_mate_ranks_sorted[j]                   = read_mate_ranks[coord_index[j]];
+                    read_physical_location_x_sorted[j]          = read_physical_location_x[coord_index[j]];
+                    read_physical_location_y_sorted[j]          = read_physical_location_y[coord_index[j]];
+                    read_mate_coordinates_sorted[j]             = read_mate_coordinates[coord_index[j]];
+                    read_unclipped_positions_sorted[j]          = read_unclipped_positions[coord_index[j]];
                 }
 
                 //We free memorys and for next of the loop we do same algo
@@ -1155,6 +1271,20 @@ int main (int argc, char *argv[]) {
                 free(local_reads_coordinates_unsorted); //ok
                 free(local_reads_sizes_unsorted);       //ok
                 free(local_offset_source_unsorted);     //ok
+                free(read_Qname_keys);
+                free(read_flags);
+                free(read_pair_nums);
+                free(read_orientations);
+                free(read_mate_scores);
+                free(read_Lb);
+                free(read_chr_names);
+                free(read_chr_mate_names);
+                free(read_mate_ranks);
+                free(read_physical_location_x);
+                free(read_physical_location_y);
+                free(read_mate_coordinates);
+                free(read_unclipped_positions);
+
 
                 // we need the total number of reads.
                 size_t total_num_read = 0;
@@ -1175,7 +1305,7 @@ int main (int argc, char *argv[]) {
 
                 time_count = MPI_Wtime();
 
-                ParallelBitonicSort2(
+                /*ParallelBitonicSort2(
                     split_comm,
                     split_rank,
                     dimensions,
@@ -1185,6 +1315,32 @@ int main (int argc, char *argv[]) {
                     local_offset_source_sorted,
                     local_dest_rank_sorted,
                     max_num_read
+                );*/
+
+                ParallelBitonicSortAll(
+                    split_comm,
+                    split_rank,
+                    dimensions,
+                    local_reads_coordinates_sorted,
+                    local_reads_sizes_sorted,
+                    local_source_rank_sorted,
+                    local_offset_source_sorted,
+                    local_dest_rank_sorted,
+                    read_Qname_keys_sorted,
+                    read_flags_sorted,
+                    read_pair_nums_sorted,
+                    read_orientations_sorted,
+                    read_mate_scores_sorted,
+                    read_Lb_sorted,
+                    read_chr_names_sorted,
+                    read_chr_mate_names_sorted,
+                    read_mate_ranks_sorted,
+                    read_physical_location_x_sorted,
+                    read_physical_location_y_sorted,
+                    read_mate_coordinates_sorted,
+                    read_unclipped_positions_sorted,
+                    max_num_read
+                    
                 );
 
                 //if (split_rank == chosen_split_rank) {
@@ -1493,6 +1649,20 @@ int main (int argc, char *argv[]) {
                         local_reads_sizes_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(int));
                         local_dest_rank_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
                         local_source_rank_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(int));
+                        read_Qname_keys_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                        read_flags_sorted_trimmed_for_bruck                 = malloc(numItems * sizeof(unsigned int));
+                        read_pair_nums_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(unsigned int));
+                        read_orientations_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(unsigned int));
+                        read_mate_scores_sorted_trimmed_for_bruck           = malloc(numItems * sizeof(int));
+                        read_chr_names_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(int));
+                        read_chr_mate_names_sorted_trimmed_for_bruck        = malloc(numItems * sizeof(int));
+                        read_mate_ranks_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                        read_Lb_sorted_trimmed_for_bruck                    = malloc(numItems * sizeof(int));
+                        read_physical_location_x_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                        read_physical_location_y_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                        read_mate_coordinates_sorted_trimmed_for_bruck      = malloc(numItems * sizeof(size_t));
+                        read_unclipped_positions_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(size_t));
+
                         size_t y = 0;
 
                         for (y = 0; y < numItems; y++) {
@@ -1503,7 +1673,20 @@ int main (int argc, char *argv[]) {
                             local_reads_sizes_sorted_trimmed_for_bruck[y]          = local_reads_sizes_sorted[y + offset];
                             local_dest_rank_sorted_trimmed_for_bruck[y]            = local_dest_rank_sorted[y + offset];
                             local_source_rank_sorted_trimmed_for_bruck[y]          = local_source_rank_sorted[y + offset];
-                        }
+                            read_Qname_keys_sorted_trimmed_for_bruck[y]            = read_Qname_keys_sorted[y + offset];
+                            read_flags_sorted_trimmed_for_bruck[y]                 = read_flags_sorted[y + offset];
+                            read_pair_nums_sorted_trimmed_for_bruck[y]             = read_pair_nums_sorted[y + offset]; 
+                            read_orientations_sorted_trimmed_for_bruck[y]          = read_orientations_sorted[y + offset];
+                            read_mate_scores_sorted_trimmed_for_bruck[y]           = read_mate_scores_sorted[y + offset];
+                            read_chr_names_sorted_trimmed_for_bruck[y]             = read_chr_names_sorted[y + offset];
+                            read_chr_mate_names_sorted_trimmed_for_bruck[y]        = read_chr_mate_names_sorted[y + offset];
+                            read_mate_ranks_sorted_trimmed_for_bruck[y]            = read_mate_ranks_sorted[y + offset];
+                            read_Lb_sorted_trimmed_for_bruck[y]                    = read_Lb_sorted[y + offset];
+                            read_physical_location_x_sorted_trimmed_for_bruck[y]   = read_physical_location_x_sorted[y + offset];
+                            read_physical_location_y_sorted_trimmed_for_bruck[y]   = read_physical_location_y_sorted[y + offset];
+                            read_mate_coordinates_sorted_trimmed_for_bruck[y]      = read_mate_coordinates_sorted[y + offset];
+                            read_unclipped_positions_sorted_trimmed_for_bruck[y]   = read_unclipped_positions_sorted[y + offset];
+                         }
 
                         num_read_for_bruck = numItems;
 
@@ -1531,6 +1714,19 @@ int main (int argc, char *argv[]) {
                         local_reads_sizes_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(int));
                         local_dest_rank_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
                         local_source_rank_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(int));
+                        read_Qname_keys_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                        read_flags_sorted_trimmed_for_bruck                 = malloc(numItems * sizeof(unsigned int));
+                        read_pair_nums_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(unsigned int));
+                        read_orientations_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(unsigned int));
+                        read_mate_scores_sorted_trimmed_for_bruck           = malloc(numItems * sizeof(int));
+                        read_chr_names_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(int));
+                        read_chr_mate_names_sorted_trimmed_for_bruck        = malloc(numItems * sizeof(int));
+                        read_mate_ranks_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                        read_Lb_sorted_trimmed_for_bruck                    = malloc(numItems * sizeof(int));
+                        read_physical_location_x_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                        read_physical_location_y_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                        read_mate_coordinates_sorted_trimmed_for_bruck      = malloc(numItems * sizeof(size_t));
+                        read_unclipped_positions_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(size_t));
                         num_read_for_bruck = 0;
                     }
 
@@ -1544,6 +1740,19 @@ int main (int argc, char *argv[]) {
                     local_reads_sizes_sorted_trimmed_for_bruck          = malloc(local_readNum * sizeof(int));
                     local_dest_rank_sorted_trimmed_for_bruck            = malloc(local_readNum * sizeof(int));
                     local_source_rank_sorted_trimmed_for_bruck          = malloc(local_readNum * sizeof(int));
+                    read_Qname_keys_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                    read_flags_sorted_trimmed_for_bruck                 = malloc(numItems * sizeof(unsigned int));
+                    read_pair_nums_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(unsigned int));
+                    read_orientations_sorted_trimmed_for_bruck          = malloc(numItems * sizeof(unsigned int));
+                    read_mate_scores_sorted_trimmed_for_bruck           = malloc(numItems * sizeof(int));
+                    read_chr_names_sorted_trimmed_for_bruck             = malloc(numItems * sizeof(int));
+                    read_chr_mate_names_sorted_trimmed_for_bruck        = malloc(numItems * sizeof(int));
+                    read_mate_ranks_sorted_trimmed_for_bruck            = malloc(numItems * sizeof(int));
+                    read_Lb_sorted_trimmed_for_bruck                    = malloc(numItems * sizeof(int));
+                    read_physical_location_x_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                    read_physical_location_y_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(int));
+                    read_mate_coordinates_sorted_trimmed_for_bruck      = malloc(numItems * sizeof(size_t));
+                    read_unclipped_positions_sorted_trimmed_for_bruck   = malloc(numItems * sizeof(size_t));
 
                     size_t y = 0;
 
@@ -1555,6 +1764,19 @@ int main (int argc, char *argv[]) {
                         local_reads_sizes_sorted_trimmed_for_bruck[y]          = local_reads_sizes_sorted[y];
                         local_dest_rank_sorted_trimmed_for_bruck[y]            = local_dest_rank_sorted[y];
                         local_source_rank_sorted_trimmed_for_bruck[y]          = local_source_rank_sorted[y];
+                        read_Qname_keys_sorted_trimmed_for_bruck[y]            = read_Qname_keys_sorted[y];
+                        read_flags_sorted_trimmed_for_bruck[y]                 = read_flags_sorted[y];
+                        read_pair_nums_sorted_trimmed_for_bruck[y]             = read_pair_nums_sorted[y]; 
+                        read_orientations_sorted_trimmed_for_bruck[y]          = read_orientations_sorted[y];
+                        read_mate_scores_sorted_trimmed_for_bruck[y]           = read_mate_scores_sorted[y];
+                        read_chr_names_sorted_trimmed_for_bruck[y]             = read_chr_names_sorted[y];
+                        read_chr_mate_names_sorted_trimmed_for_bruck[y]        = read_chr_mate_names_sorted[y];
+                        read_mate_ranks_sorted_trimmed_for_bruck[y]            = read_mate_ranks_sorted[y];
+                        read_Lb_sorted_trimmed_for_bruck[y]                    = read_Lb_sorted[y];
+                        read_physical_location_x_sorted_trimmed_for_bruck[y]   = read_physical_location_x_sorted[y];
+                        read_physical_location_y_sorted_trimmed_for_bruck[y]   = read_physical_location_y_sorted[y];
+                        read_mate_coordinates_sorted_trimmed_for_bruck[y]      = read_mate_coordinates_sorted[y];
+                        read_unclipped_positions_sorted_trimmed_for_bruck[y]   = read_unclipped_positions_sorted[y];
                     }
 
                     num_read_for_bruck = numItems;
@@ -1580,6 +1802,20 @@ int main (int argc, char *argv[]) {
                 free(local_reads_sizes_sorted);
                 free(local_dest_rank_sorted);
                 free(local_source_rank_sorted);
+                free(read_Qname_keys_sorted);
+                free(read_flags_sorted);
+                free(read_pair_nums_sorted);
+                free(read_orientations_sorted);
+                free(read_mate_scores_sorted);
+                free(read_chr_names_sorted);
+                free(read_chr_mate_names_sorted);
+                free(read_mate_ranks_sorted);
+                free(read_Lb_sorted);
+                free(read_physical_location_x_sorted);
+                free(read_physical_location_y_sorted);
+                free(read_mate_coordinates_sorted);
+                free(read_unclipped_positions_sorted);
+
 
 
                 //if (split_rank == chosen_split_rank) {
@@ -1622,6 +1858,20 @@ int main (int argc, char *argv[]) {
                 int **read_size                 = malloc(sizeof(int *) * dimensions);
                 int **dest_rank                 = malloc(sizeof(int *) * dimensions);
                 int **source_rank               = malloc(sizeof(int *) * dimensions);
+                int **Qname_keys                = malloc(sizeof(int *) * dimensions);
+                unsigned int **flags            = malloc(sizeof(unsigned int *) * dimensions);
+                unsigned int **pair_nums        = malloc(sizeof(unsigned int *) * dimensions);
+                unsigned int **orientations     = malloc(sizeof(unsigned int *) * dimensions);
+                int **mate_scores               = malloc(sizeof(int *) * dimensions);
+                int **chr_names                 = malloc(sizeof(int *) * dimensions);
+                int **mate_chr_names            = malloc(sizeof(int *) * dimensions);
+                int **mate_ranks                = malloc(sizeof(int *) * dimensions);
+                int **read_lb                   = malloc(sizeof(int *) * dimensions);
+                int **physical_location_x       = malloc(sizeof(int *) * dimensions);
+                int **physical_location_y       = malloc(sizeof(int *) * dimensions);
+                size_t **mate_coordinates       = malloc(sizeof(int *) * dimensions);
+                size_t **unclipped_positions    = malloc(sizeof(int *) * dimensions);
+
 
                 /*
                  * We send in order
@@ -1653,7 +1903,33 @@ int main (int argc, char *argv[]) {
                             local_source_rank_sorted_trimmed_for_bruck,       //source rank
                             &source_rank,
                             local_offset_dest_sorted_trimmed_for_bruck,
-                            &dest_offsets
+                            &dest_offsets,
+                            read_Qname_keys_sorted_trimmed_for_bruck,
+                            &Qname_keys,
+                            read_flags_sorted_trimmed_for_bruck,
+                            &flags,
+                            read_pair_nums_sorted_trimmed_for_bruck, 
+                            &pair_nums,
+                            read_orientations_sorted_trimmed_for_bruck, 
+                            &orientations,
+                            read_mate_scores_sorted_trimmed_for_bruck,
+                            &mate_scores,
+                            read_mate_ranks_sorted_trimmed_for_bruck,
+                            &mate_ranks,
+                            read_chr_names_sorted_trimmed_for_bruck,
+                            &chr_names,
+                            read_chr_mate_names_sorted_trimmed_for_bruck,
+                            &mate_chr_names,
+                            read_Lb_sorted_trimmed_for_bruck,
+                            &read_lb,
+                            read_physical_location_x_sorted_trimmed_for_bruck, 
+                            &physical_location_x,
+                            read_physical_location_y_sorted_trimmed_for_bruck, 
+                            &physical_location_y,
+                            read_mate_coordinates_sorted_trimmed_for_bruck,
+                            &mate_coordinates,
+                            read_unclipped_positions_sorted_trimmed_for_bruck,
+                            &unclipped_positions
                            );
 
                 //if (split_rank == chosen_split_rank) {
@@ -1672,6 +1948,19 @@ int main (int argc, char *argv[]) {
                 free(local_offset_dest_sorted_trimmed_for_bruck);
                 free(local_source_rank_sorted_trimmed_for_bruck);
                 free(local_source_rank_sorted_trimmed_for_bruckv2);
+                free(read_Qname_keys_sorted_trimmed_for_bruck);
+                free(read_flags_sorted_trimmed_for_bruck);
+                free(read_pair_nums_sorted_trimmed_for_bruck);
+                free(read_orientations_sorted_trimmed_for_bruck);
+                free(read_mate_scores_sorted_trimmed_for_bruck);
+                free(read_mate_ranks_sorted_trimmed_for_bruck);
+                free(read_chr_names_sorted_trimmed_for_bruck);
+                free(read_chr_mate_names_sorted_trimmed_for_bruck);
+                free(read_Lb_sorted_trimmed_for_bruck);
+                free(read_physical_location_x_sorted_trimmed_for_bruck);
+                free(read_physical_location_y_sorted_trimmed_for_bruck);
+                free(read_mate_coordinates_sorted_trimmed_for_bruck);
+                free(read_unclipped_positions_sorted_trimmed_for_bruck);
 
                 local_reads_coordinates_sorted_trimmed    = malloc(first_local_readNum * sizeof(size_t));
                 local_offset_source_sorted_trimmed        = malloc(first_local_readNum * sizeof(size_t));
@@ -1679,6 +1968,20 @@ int main (int argc, char *argv[]) {
                 local_dest_rank_sorted_trimmed            = malloc(first_local_readNum * sizeof(int));
                 local_source_rank_sorted_trimmed          = malloc(first_local_readNum * sizeof(int));
                 local_reads_sizes_sorted_trimmed          = malloc(first_local_readNum * sizeof(int));
+                read_Qname_keys_sorted_trimmed            = malloc(first_local_readNum * sizeof(int));
+                read_flags_sorted_trimmed                 = malloc(first_local_readNum * sizeof(unsigned int));
+                read_pair_nums_sorted_trimmed             = malloc(first_local_readNum * sizeof(unsigned int));
+                read_orientations_sorted_trimmed          = malloc(first_local_readNum * sizeof(unsigned int));
+                read_mate_scores_sorted_trimmed           = malloc(first_local_readNum * sizeof(int));
+                read_mate_ranks_sorted_trimmed            = malloc(first_local_readNum * sizeof(int));
+                read_chr_names_sorted_trimmed             = malloc(first_local_readNum * sizeof(int));
+                read_chr_mate_names_sorted_trimmed        = malloc(first_local_readNum * sizeof(int));
+                read_Lb_sorted_trimmed                    = malloc(first_local_readNum * sizeof(int)); 
+                read_physical_location_x_sorted_trimmed   = malloc(first_local_readNum * sizeof(int));
+                read_physical_location_y_sorted_trimmed   = malloc(first_local_readNum * sizeof(int));
+                read_mate_coordinates_sorted_trimmed      = malloc(first_local_readNum * sizeof(size_t));
+                read_unclipped_positions_sorted_trimmed   = malloc(first_local_readNum * sizeof(size_t));
+                
 
                 //if (split_rank == chosen_split_rank) {
                 //    fprintf(stderr, "rank %d :::::[MPISORT][FREE + MALLOC] time spent = %f s\n", split_rank, MPI_Wtime() - time_count);
@@ -1699,12 +2002,25 @@ int main (int argc, char *argv[]) {
 
                     for (k = 0; k < number_of_reads_by_procs[m_int]; k++) {
 
-                        local_offset_dest_sorted_trimmed[k + j]         = dest_offsets[m_int][k];
+                        local_offset_dest_sorted_trimmed[k + j]         = dest_offsets[m_int][k]; 
                         local_dest_rank_sorted_trimmed[k + j]           = dest_rank[m_int][k];
                         local_reads_sizes_sorted_trimmed[k + j]         = read_size[m_int][k];
                         local_offset_source_sorted_trimmed[k + j]       = local_source_offsets[m_int][k];
                         local_reads_coordinates_sorted_trimmed[k + j]   = reads_coordinates[m_int][k];
                         local_source_rank_sorted_trimmed[k + j]         = source_rank[m_int][k];
+                        read_Qname_keys_sorted_trimmed[k + j]           = Qname_keys[m_int][k];
+                        read_flags_sorted_trimmed[k + j]                = flags[m_int][k];
+                        read_pair_nums_sorted_trimmed[k + j]            = pair_nums[m_int][k];
+                        read_orientations_sorted_trimmed[k + j]         = orientations[m_int][k];
+                        read_mate_scores_sorted_trimmed[k + j]          = mate_scores[m_int][k];
+                        read_mate_ranks_sorted_trimmed[k + j]           = mate_ranks[m_int][k];
+                        read_chr_names_sorted_trimmed[k + j]            = chr_names[m_int][k];
+                        read_chr_mate_names_sorted_trimmed[k + j]       = mate_chr_names[m_int][k];
+                        read_Lb_sorted_trimmed[k + j]                   = read_lb[m_int][k];
+                        read_physical_location_x_sorted_trimmed[k + j]  = physical_location_x[m_int][k];
+                        read_physical_location_y_sorted_trimmed[k + j]  = physical_location_y[m_int][k];
+                        read_mate_coordinates_sorted_trimmed[k + j]     = mate_coordinates[m_int][k];
+                        read_unclipped_positions_sorted_trimmed[k + j]  = unclipped_positions[m_int][k]; 
 
                     }
 
@@ -1714,6 +2030,19 @@ int main (int argc, char *argv[]) {
                     free(local_source_offsets[m_int]);
                     free(reads_coordinates[m_int]);
                     free(source_rank[m_int]);
+                    free(Qname_keys[m_int]);
+                    free(flags[m_int]);
+                    free(pair_nums[m_int]);
+                    free(orientations[m_int]);
+                    free(mate_scores[m_int]);
+                    free(mate_ranks[m_int]);
+                    free(chr_names[m_int]);
+                    free(mate_chr_names[m_int]);
+                    free(read_lb[m_int]);
+                    free(physical_location_x[m_int]);
+                    free(physical_location_y[m_int]);
+                    free(mate_coordinates[m_int]);
+                    free(unclipped_positions[m_int]);
                     j += number_of_reads_by_procs[m_int];
                 }
 
@@ -1744,6 +2073,58 @@ int main (int argc, char *argv[]) {
                     free(dest_offsets);
                 }
 
+                if (Qname_keys != NULL) {
+                    free(Qname_keys);
+                }
+
+                if (flags != NULL) {
+                    free(flags);
+                }
+
+                if (pair_nums != NULL) {
+                    free(pair_nums);
+                }
+
+                if (orientations != NULL) {
+                    free(orientations);
+                }
+
+                if (mate_scores != NULL) {
+                    free(mate_scores);
+                }
+
+                if (mate_ranks != NULL) {
+                    free(mate_ranks);
+                }
+
+                if (chr_names != NULL) {
+                    free(chr_names);
+                }
+
+                if (mate_chr_names != NULL) {
+                    free(mate_chr_names);
+                }
+
+                if (read_lb != NULL) {
+                    free(read_lb);
+                }
+
+                if (physical_location_x != NULL) {
+                    free(physical_location_x);
+                }
+
+                if (physical_location_y != NULL) {
+                    free(physical_location_y);
+                }
+
+                if (mate_coordinates != NULL) {
+                    free(mate_coordinates);
+                }
+
+                if (unclipped_positions != NULL) {
+                    free(unclipped_positions);
+                }
+
                 local_readNum = first_local_readNum;
 
 
@@ -1765,7 +2146,7 @@ int main (int argc, char *argv[]) {
                    fprintf(stderr, "[MPISORT][CHR = %i] local_offset_source_sorted_trimmed[%zu] = %zu \n", i ,j, local_offset_source_sorted_trimmed[j]);
                  }
                 */
-                free(local_reads_coordinates_sorted_trimmed);
+                //free(local_reads_coordinates_sorted_trimmed);
 
                 md_log_rank_debug(chosen_split_rank, "[MPISORT] we call write SAM\n");
 
@@ -1795,12 +2176,26 @@ int main (int argc, char *argv[]) {
                                                             local_reads_sizes_sorted_trimmed,
                                                             local_dest_rank_sorted_trimmed,
                                                             local_source_rank_sorted_trimmed,
+                                                            local_reads_coordinates_sorted_trimmed,
+                                                            read_mate_coordinates_sorted_trimmed,
+                                                            read_mate_scores_sorted_trimmed,
+                                                            read_Qname_keys_sorted_trimmed,
+                                                            read_flags_sorted_trimmed,
+                                                            read_pair_nums_sorted_trimmed,
+                                                            read_orientations_sorted_trimmed, 
+                                                            read_Lb_sorted_trimmed,
+                                                            read_chr_names_sorted_trimmed,
+                                                            read_chr_mate_names_sorted_trimmed,
+                                                            read_physical_location_x_sorted_trimmed,
+                                                            read_physical_location_y_sorted_trimmed,
+                                                            read_unclipped_positions_sorted_trimmed,
                                                             local_data,
                                                             goff[rank],
                                                             first_local_readNum,
                                         		            final_local_readNum,
                                                             local_disc_duplicate_number,
-                                                            write_format
+                                                            write_format,
+                                                            reads[i]
                                                         );
 
                     /*
@@ -1911,13 +2306,27 @@ int main (int argc, char *argv[]) {
                         local_reads_sizes_sorted_trimmed,
                         local_dest_rank_sorted_trimmed,
                         local_source_rank_sorted_trimmed,
+                        local_reads_coordinates_sorted_trimmed,
+                        read_mate_coordinates_sorted_trimmed,
+                        read_mate_scores_sorted_trimmed,
+                        read_Qname_keys_sorted_trimmed,
+                        read_flags_sorted_trimmed,
+                        read_pair_nums_sorted_trimmed,
+                        read_orientations_sorted_trimmed, 
+                        read_Lb_sorted_trimmed,
+                        read_chr_names_sorted_trimmed,
+                        read_chr_mate_names_sorted_trimmed,
+                        read_physical_location_x_sorted_trimmed,
+                        read_physical_location_y_sorted_trimmed,
+                        read_unclipped_positions_sorted_trimmed,
                         local_data,
                         goff[rank],
                         first_local_readNum,
                         final_local_readNum,
                         all_disc_duplicate_offset_source,
                         total_disc_duplicates,
-                        write_format
+                        write_format,
+                        reads[i]
                     );
 
                 }
@@ -1959,7 +2368,8 @@ int main (int argc, char *argv[]) {
                                                                     header,
                                                                     chrNames[i],
                                                                     local_disc_duplicate_number,
-                                                                    write_format
+                                                                    write_format,
+                                                                    reads[i]
                                                                     );
                     /*
                         Now we exchange every local_disc_duplicate_offset_source
@@ -2064,7 +2474,8 @@ int main (int argc, char *argv[]) {
                                             chrNames[i],
                                             all_disc_duplicate_offset_source,
                                             total_disc_duplicates,
-                                            write_format
+                                            write_format, 
+                                            reads[i]
                                             );
                 }
 

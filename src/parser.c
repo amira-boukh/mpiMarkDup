@@ -31,6 +31,10 @@
 
 #include "parser.h"
 #include "log.h"
+#include "reads.h"
+#include "mpiMarkDuplicatesUtils.h"
+#include "markDuplicates.h"
+#include "createLBList.h"
 
 char parse_mode;
 
@@ -94,19 +98,31 @@ void init_goff(MPI_File mpi_filed, unsigned int headerSize, size_t fsize, int nu
 }
 
 void parser_paired(char *localData, int rank, size_t start_offset, unsigned char threshold,
-                   int nbchrom, size_t **preadNumberByChr, char **chrNames, Read ***preads) {
+                   int nbchrom, size_t **preadNumberByChr, char **chrNames, readInfo ***preads, int optical_distance, char* header) {
 
     char *currentCarac;
+    char *cigar; 
+    char *cigar_mate;
     char currentLine[MAX_LINE_SIZE];
     unsigned char quality;
     int i, chr, mchr, nbchr = 0;
     int lastChr = -1;
-    int next;
+    int next, mate_score, key;
     size_t lineSize, offset_read_in_source_file;
-    size_t coord;
+    size_t coord, coord_mate,flag;
     size_t *readNumberByChr;
     size_t counter = 0;
-    Read **reads = *preads;
+    readInfo **reads = *preads;
+    char *qname;  
+    unsigned int firstInPair;
+    //lbInfo *lb; 
+
+    chrInfo chromosome;
+    lbInfo lb;
+    initChrInfo(&chromosome, header);
+    initLbInfo(&lb, header);
+
+
 
     for (i = 0; i < MAX_LINE_SIZE; i++) {
         currentLine[i] = 0;
@@ -131,12 +147,22 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
 
         //GO TO FLAG
         currentCarac = strstr(currentLine, "\t");
+        //Qname 
+        char *tokenCar;
+        currentCarac = currentLine;
+        int count = getTokenTab(&currentCarac, &tokenCar);
+        qname = tokenCar;
+        
+        //free(tokenCar);
 
-        *currentCarac = '\0';
-        currentCarac++;
 
-        //GO TO RNAME (Chr name)
-        currentCarac = strstr(currentCarac + 1, "\t");
+        //*currentCarac = '\0';
+        //currentCarac++;
+        //currentCarac = strstr(currentCarac, "\t");
+        flag = strtoull(currentCarac, &currentCarac,10);
+        currentCarac = strstr(currentCarac, "\t");
+        //fprintf(stdout,"%d\n",flag);
+        
 
         if (lastChr == (nbchr - 1)) {
             chr = (nbchr - 1);
@@ -149,28 +175,32 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
         currentCarac = strstr(currentCarac + 1, "\t");
 
 
-        if (parse_mode == MODE_NAME) {
-            coord = strtoull(currentLine, NULL, strlen(currentLine));
-            //coord = strtoull(currentLine, NULL, strlen(currentLine));
-            coord = hash_name(currentLine, 16);
-            /*
-            if (!rank) {
-                printf("%s => %zu\n", currentLine, coord);
-            }
-            */
+    
+        key = strtoull(currentLine, NULL, strlen(currentLine));
+        key = hash_name(currentLine, 16);
 
-            strtoull(currentCarac, &currentCarac, 10);
+        //strtoull(currentCarac, &currentCarac, 10);
 
-        } else {
-            //TAKE COORD AND GO TO MAPQ
-            coord = strtoull(currentCarac, &currentCarac, 10);
-        }
+    
+        //TAKE COORD AND GO TO MAPQ
+        coord = strtoull(currentCarac, &currentCarac, 10);
+
+        
+       //fprintf(stderr,"qname : %s, key : %d, coord : %zu\n",qname, key,coord);
+        
+    
 
         //TAKE MAPQ AND GO TO CIGAR
         quality = strtoull(currentCarac, &currentCarac, 10);
+        currentCarac = strstr(currentCarac, "\t");
+        currentCarac = currentCarac +1;
+        count = getTokenTab(&currentCarac, &tokenCar);
+        cigar = tokenCar;
+        //free(tokenCar);
+
 
         //GO TO RNEXT
-        currentCarac = strstr(currentCarac + 1, "\t");
+        currentCarac = strstr(currentCarac-1, "\t");
 
         if (currentCarac[1] == '=') {
             mchr = chr;
@@ -181,6 +211,52 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
         } else {
             mchr = getChr(currentCarac, chrNames, nbchr);
         }
+    
+        currentCarac = strstr(currentCarac+1, "\t");
+        coord_mate = strtoull(currentCarac,&currentCarac, 10); 
+
+        currentCarac = strstr(currentCarac+1, "\t");
+        currentCarac = strstr(currentCarac+1, "\t");
+        currentCarac = strstr(currentCarac+1, "\t");
+        currentCarac = currentCarac +1;
+
+
+        
+        while (getTokenTab(&currentCarac, &tokenCar)) {
+            if (strncmp(tokenCar, "MC:Z:", strlen("MC:Z:")) == 0) {
+                cigar_mate = getReadTagValue(tokenCar, "MC:Z:");
+
+            }
+            if (strncmp(tokenCar, "ms:i:", strlen("ms:i:")) == 0) {
+                char *score = getReadTagValue(tokenCar, "ms:i:");
+                mate_score = strtoull(score,&score, 10); 
+
+            }
+            if (strncmp(tokenCar, "LB:Z:", strlen("LB:Z:")) == 0) {
+            //fillReadLBValue(tokenCar, read);
+            char *lbName = getReadTagValue(tokenCar, "LB:Z:");
+
+            if (strcmp((&lb)->lbList[(&lb)->lastLb], lbName) == 0) {
+                reads[chr]->next->readLb = (&lb)->lastLb;
+
+            } else {
+                for (i = 0; i < (&lb)->lbNum; ++i) {
+                    if (strcmp((&lb)->lbList[i], lbName) == 0) {
+                        reads[chr]->next->readLb = i;
+                    }
+                }
+            }
+
+            free(lbName);
+            free(tokenCar);
+            break;
+        }
+
+        free(tokenCar);
+        }
+
+        //fprintf(stderr,"qname : %s, mate score : %d cigar mate : %s\n",qname, mate_score, cigar_mate);
+
 
         //first we check if reads mapped on the same chromosome
 
@@ -188,13 +264,34 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
             //then we found concordant reads
             if (quality >= threshold) {
 
-                reads[chr]->next = malloc(sizeof(Read));
-                reads[chr]->next->coord = coord;
+                reads[chr]->next = malloc(sizeof(readInfo));
+                reads[chr]->next->Qname = qname;
+                reads[chr]->next->valueFlag = flag;
+                reads[chr]->next->coordPos = coord;
+                reads[chr]->next->coordMatePos = coord_mate;
+                reads[chr]->next->readChromosome = chr;
+                reads[chr]->next->mateChromosome = mchr;
                 reads[chr]->next->quality = quality;
+                reads[chr]->next->cigar = cigar;
+                reads[chr]->next->mate_cigar = cigar_mate;
                 reads[chr]->next->offset_source_file = offset_read_in_source_file;
                 reads[chr]->next->offset = lineSize;
+                fillUnclippedCoord(reads[chr]->next);
+                reads[chr]->next->orientation = getOrientation(reads[chr]->next, 0);
+                if (optical_distance > 0) {
+                    reads[chr]->next->physicalLocation = computePhysicalLocation(reads[chr]->next);
+                }
+                firstInPair = readBits((unsigned int)reads[chr]->next->valueFlag, 6);
+                if (firstInPair == 1)
+                    reads[chr]->next->pair_num = 1;
+                else
+                    reads[chr]->next->pair_num = 2;
+
+                reads[chr]->next->fingerprint = read2Fingerprint(reads[chr]->next);
+                reads[chr]->next->mate_fingerprint = read2mateFP(reads[chr]->next);
                 reads[chr] = reads[chr]->next;
                 readNumberByChr[chr]++;
+                //fprintf(stdout,"flag %ld rmane %d quality %d\n",flag,chr,quality);
             }
 
         } else if ((chr < (nbchr - 2)) && ( mchr < (nbchr - 2))) {
@@ -203,21 +300,59 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
             if (quality >= threshold) {
                 
                 //we found discordant reads
-                reads[nbchr - 1]->next = malloc(sizeof(Read));
-                reads[nbchr - 1]->next->coord = coord;
+                reads[nbchr - 1]->next = malloc(sizeof(readInfo));
+                reads[nbchr - 1]->next->Qname = qname;
+                reads[nbchr - 1]->next->valueFlag = flag;
+                reads[nbchr - 1]->next->coordPos = coord;
+                reads[nbchr - 1]->next->coordMatePos = coord_mate;
+                reads[nbchr - 1]->next->readChromosome = chr;
+                reads[nbchr - 1]->next->mateChromosome = mchr;
+                reads[nbchr - 1]->next->cigar = cigar;
+                reads[nbchr - 1]->next->mate_cigar = cigar_mate;
                 reads[nbchr - 1]->next->quality = quality;
                 reads[nbchr - 1]->next->offset_source_file = offset_read_in_source_file;
                 reads[nbchr - 1]->next->offset = lineSize;
+                reads[nbchr - 1]->next->orientation = getOrientation(reads[nbchr - 1]->next, 0);
+                fillUnclippedCoord(reads[nbchr - 1]->next);
+                if (optical_distance > 0) {
+                    reads[nbchr - 1]->next->physicalLocation = computePhysicalLocation(reads[nbchr-1]->next);
+                }
+               firstInPair = readBits((unsigned int)reads[nbchr - 1]->next->valueFlag, 6);
+                if (firstInPair == 1)
+                    reads[nbchr - 1]->next->pair_num = 1;
+                else
+                    reads[nbchr - 1]->next->pair_num = 2;
+                reads[nbchr - 1]->next->fingerprint = read2Fingerprint(reads[nbchr - 1]->next);
+                reads[nbchr - 1]->next->mate_fingerprint = read2mateFP(reads[nbchr - 1]->next);
                 reads[nbchr - 1] = reads[nbchr - 1]->next;
                 readNumberByChr[nbchr - 1]++;
 
                 //we add it in reads[chr] too
                 //as we want to keep it in the bam
-                reads[chr]->next = malloc(sizeof(Read));
-                reads[chr]->next->coord = coord;
+                reads[chr]->next = malloc(sizeof(readInfo));
+                reads[chr]->next->Qname = qname;
+                reads[chr]->next->valueFlag = flag;
+                reads[chr]->next->coordPos = coord;
+                reads[chr]->next->coordMatePos = coord_mate;
                 reads[chr]->next->quality = quality;
+                reads[chr]->next->readChromosome = chr;
+                reads[chr]->next->mateChromosome = mchr;
+                reads[chr]->next->cigar = cigar;
+                reads[chr]->next->mate_cigar = cigar_mate;
                 reads[chr]->next->offset_source_file = offset_read_in_source_file;
                 reads[chr]->next->offset = lineSize;
+                reads[chr]->next->orientation = getOrientation(reads[chr]->next, 0);
+                fillUnclippedCoord(reads[chr]->next);
+                if (optical_distance > 0) {
+                    reads[chr]->next->physicalLocation = computePhysicalLocation(reads[chr]->next);
+                }
+                firstInPair = readBits((unsigned int)reads[chr]->next->valueFlag, 6);
+                if (firstInPair == 1)
+                    reads[chr]->next->pair_num = 1;
+                else
+                    reads[chr]->next->pair_num = 2;
+                reads[chr]->next->fingerprint = read2Fingerprint(reads[chr]->next);
+                reads[chr]->next->mate_fingerprint = read2mateFP(reads[chr]->next);
                 reads[chr] = reads[chr]->next;
                 readNumberByChr[chr]++;
       
@@ -226,27 +361,36 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
         } else if ((chr == '*') && ( mchr < (nbchr - 2))) {
 
             //we found discordant reads with one pair unmapped
-            reads[nbchr - 2]->next = malloc(sizeof(Read));
+            reads[nbchr - 2]->next = malloc(sizeof(readInfo));
+            reads[nbchr - 2]->next->Qname = qname;
+            reads[nbchr - 2]->next->valueFlag = flag;
             reads[nbchr - 2]->next->offset_source_file = offset_read_in_source_file;
             reads[nbchr - 2]->next->offset = lineSize;
             reads[nbchr - 2] = reads[nbchr - 2]->next;
+            reads[nbchr - 2]->next->readChromosome = -1;
             readNumberByChr[nbchr - 2]++;
 
         } else if ((mchr == '*') && ( chr < (nbchr - 2))) {
 
             //we found discordant reads with one pair unmapped
-            reads[nbchr - 2]->next = malloc(sizeof(Read));
+            reads[nbchr - 2]->next = malloc(sizeof(readInfo));
+            reads[nbchr - 2]->next->Qname = qname;
+            reads[nbchr - 2]->next->valueFlag = flag;
             reads[nbchr - 2]->next->offset_source_file = offset_read_in_source_file;
             reads[nbchr - 2]->next->offset = lineSize;
+            reads[nbchr - 2]->next->readChromosome = -1;
             reads[nbchr - 2] = reads[nbchr - 2]->next;
             readNumberByChr[nbchr - 2]++;
         }
 
         else {
             //we found unmapped pairs reads
-            reads[nbchr - 2]->next = malloc(sizeof(Read));
+            reads[nbchr - 2]->next = malloc(sizeof(readInfo));
+            reads[nbchr - 2]->next->Qname = qname;
+            reads[nbchr - 2]->next->valueFlag = flag;
             reads[nbchr - 2]->next->offset_source_file = offset_read_in_source_file;
             reads[nbchr - 2]->next->offset = lineSize;
+            reads[nbchr - 2]->next->readChromosome = -1;
             reads[nbchr - 2] = reads[nbchr - 2]->next;
             readNumberByChr[nbchr - 2]++;
         }

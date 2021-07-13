@@ -39,6 +39,7 @@
 #include "qksort.h"
 #include "writeUtils.h"
 #include "parallelBitonicSort.h"
+#include "reads.h"
 
 void writeSam(
 		int rank,
@@ -56,13 +57,27 @@ void writeSam(
 		int* new_read_size,
 		int* new_rank,
 		int *original_rank_source_offset_phase1,
+		size_t *read_coordinates,
+		size_t *read_mate_coordinates,
+        int *read_mate_scores,
+		int *read_Qname_keys,
+		unsigned int *read_flags,
+		unsigned int *read_pair_nums,
+		unsigned int *read_orientations, 
+		int *read_Lb,
+		int *read_chr_names,
+		int *read_chr_mate_names,
+		int *read_physical_location_x,
+		int *read_physical_location_y,
+		size_t *read_unclipped_positions,
 		char* data,
 		size_t offset_data_in_file,
 		size_t original_local_readNum,
 		size_t final_local_readNum,
 		size_t *disc_dup_offset_source,
     	size_t *disc_dup_number,
-		int write_format
+		int write_format, 
+		readInfo* chr
 		);
 
 size_t *writeSam_discordant(
@@ -83,12 +98,26 @@ size_t *writeSam_discordant(
     // use when redistribute the reads according to original rank
     // when sorting of offset sources is done
     int *source_rank_phase1,
+	size_t *read_coordinates,
+	size_t *read_mate_coordinates,
+	int *read_mate_scores,
+	int *read_Qname_keys,
+	unsigned int *read_flags,
+	unsigned int *read_pair_nums,
+	unsigned int *read_orientations, 
+	int *read_Lb,
+	int *read_chr_names,
+	int *read_chr_mate_names,
+	int *read_physical_location_x,
+	int *read_physical_location_y,
+	size_t *read_unclipped_positions,
     char *data,
     size_t start_offset_in_file,
     size_t previous_local_readNum,
     size_t final_local_readNum,
     size_t *disc_dup_number,
-	int write_format
+	int write_format, 
+	readInfo* chr
 );
 
 
@@ -154,7 +183,33 @@ void bruckWrite2(
 		size_t *new_source_offset,
 		size_t ***data_source_offsets,
 		int *dest_rank,
-		int ***data_dest_rank
+		int ***data_dest_rank,
+		size_t *new_coordinates,
+    	size_t ***data_coordinates,
+		size_t *new_mate_coordinates,
+		size_t ***data_mate_coordinates,
+		size_t *new_unclipped_positions,
+		size_t ***data_unclipped_coordinates,
+		int *new_mate_scores,
+		int ***data_mate_score,
+		int *new_Qname_keys,
+		int ***data_keys,
+		unsigned int *new_flags,
+		unsigned int ***data_flags,
+		unsigned int *new_pair_nums,
+		unsigned int ***data_pair_nums,
+		unsigned int *new_orientations,
+		unsigned int ***data_orientations,
+		int *read_Lb,
+		int ***data_readLb,
+		int *new_chr_names,
+		int ***data_chr,
+		int *read_chr_mate_names,
+		int ***data_mate_chr,
+		int *new_physical_location_x,
+		int ***data_physical_location_x,
+		int *new_physical_location_y,
+		int ***data_physical_location_y
 );
 
 void bruckWrite3(
@@ -175,7 +230,33 @@ void bruckWrite3(
 		int *new_source_rank,
 		int ***source_rank,
 		size_t *new_dest_offset,
-		size_t ***dest_offset
+		size_t ***dest_offset,
+		int *new_qname_keys,
+		int ***qname_keys,
+		unsigned int *new_flags,
+		unsigned int ***flags,
+		unsigned int *new_pair_nums,
+		unsigned int ***pair_nums,
+		unsigned int *new_orientations,
+		unsigned int ***orientations,
+		int *new_mate_scores, 
+		int ***mate_scores,
+		int *new_mate_ranks,
+		int ***mate_ranks,
+		int *new_chr_names,
+		int ***chr_names,
+		int *new_mate_chr_names,
+		int ***mate_chr_names,
+		int *new_read_lb,
+		int ***read_lb,
+		int *new_physical_location_x,
+		int ***physical_location_x,
+		int *new_physical_location_y,
+		int ***physical_location_y,
+		size_t *new_mate_coordinates,
+		size_t ***mate_coordinates,
+		size_t *new_unclipped_positions, 
+		size_t ***unclipped_positions
 );
 
 void bruckWrite4(MPI_Comm comm, 
@@ -192,6 +273,7 @@ void bruckWrite4(MPI_Comm comm,
                 size_t ***data_offsets_source,
                 int *new_size, 
                 int ***data_size
+				
 );
 
 void bruckMarkdup(
@@ -285,7 +367,7 @@ void writeSam_unmapped(int split_rank,
 									  char* header, 
 									  size_t local_readNum, 
 									  char* chrName, 
-									  Read* chr,
+									  readInfo* chr,
 									  int num_proc, 
 									  MPI_Comm split_comm, 
 									  MPI_Info finfo, 
@@ -317,7 +399,8 @@ size_t *writeSam_any_dim_discordant(
 		char *data,
 		size_t start_offset_in_file,
 		size_t *disc_dup_number,
-		int write_format
+		int write_format,
+		readInfo* chr
 		);
 
 
@@ -344,7 +427,8 @@ void writeSam_any_dim(
 		size_t start_offset_in_file,
 		size_t *disc_dup_offset_source,
         size_t *disc_dup_number,
-		int write_format
+		int write_format, 
+		readInfo* chr
 		);
 
 #endif
