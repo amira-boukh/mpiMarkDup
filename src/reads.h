@@ -68,6 +68,7 @@ typedef struct readInfo {
     size_t mate_fingerprint;
     size_t coordPos;                    /**< clipped read position (coordinate in sam file) */
     size_t unclippedCoordPos;           /**< unclipped read position */
+    size_t unclippedMateCoordPos;       /**< unclipped mate position */
     size_t coordMatePos;                /**< clipped mate position (coordinate in sam file) */
     size_t indexAfterSort;              /**< read index in file */
     size_t mateIndexAfterSort;          /**< mate index in file */

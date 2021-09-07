@@ -49,7 +49,7 @@ typedef struct {
 
 int areComparableForDuplicates(readInfo *pair1, readInfo *pair2, const int isPaired);
 void markDuplicateFragments(llist_t *cluster, int *totalDuplica, const int containsPairs);
-void markDuplicatePairs(llist_t *cluster, hashTable *htbl, int *totalDuplica, int *totalOpticalDuplicate);
+void markDuplicatePairs(llist_t *cluster, int *totalDuplica, int *totalOpticalDuplicate);
 int countExternalMateInList(llist_t *list, size_t *externalMate);
 
 readInfo *readParsing (char *sam_buff, 
@@ -78,6 +78,7 @@ int exchangeAndFillMate(readInfo ***matesByProc, mateInfo *mates, size_t numberO
 int fillReadAndFictitiousMate(readInfo **readArr, readInfo ***readArrWithExternal, size_t readNum);
 int fillReadLBValue(char *token, readInfo *read);
 void fillUnclippedCoord(readInfo *read);
+void fillMateUnclippedCoord(readInfo *read);
 char* flag2string(int flagValue);
 Interval* gatherIntervalByProc(Interval interval, MPI_Comm comm);
 Interval getIntervalFromBuffer(char *bufferReads, size_t readNum);
@@ -94,10 +95,38 @@ int parseLibraries(char *bufferReads,
                     size_t readNum, 
                     size_t readIndex, 
                     chrInfo *chr, 
-                    lbInfo *lb, 
+                    lbInfo *lb,
                     size_t *reads_buffer_offset_source,
                     MPI_Comm comm);
 
+int parseLibraries2(char *bufferReads, 
+                    Interval *intervalByProc, 
+                    llist_t *fragList, 
+                    llist_t *readEndsList, 
+                    readInfo ***readArr, 
+                    char ***samTokenLines, 
+                    size_t readNum, 
+                    size_t readIndex, 
+                    chrInfo *chr, 
+                    lbInfo *lb,
+                    readInfo *reads, 
+                    int *qname_keys,
+                    unsigned int *flags,
+                    unsigned int *pair_nums,
+                    unsigned int *orientations,
+                    int *phred_scores,
+                    int *mate_scores,
+                    int *read_Lb,
+                    int *chr_names,
+                    int *chr_mate_names,
+                    int *physical_location_x, 
+                    int *physical_location_y,
+                    size_t *mate_coordinates,
+                    size_t *coordinates,
+                    size_t *unclipped_coordinates,
+                    size_t *mate_unclipped_coordinates,
+                    size_t *reads_buffer_offset_source,
+                    MPI_Comm comm);
 
 char *markDuplicate (char *bufferReads, 
                     size_t readNum, 
@@ -119,6 +148,7 @@ char *markDuplicate2 (char *bufferReads,
                     unsigned int *flags,
                     unsigned int *pair_nums,
                     unsigned int *orientations,
+                    int *phred_scores,
                     int *mate_scores,
                     int *read_Lb,
                     int *chr_names,
@@ -128,9 +158,12 @@ char *markDuplicate2 (char *bufferReads,
                     size_t *mate_coordinates,
                     size_t *coordinates,
                     size_t *unclipped_coordinates, 
+                    size_t *mate_unclipped_coordinates,
                     readInfo* reads);
 
 int markMateDuplicateFlag(hashTable *htbl, readInfo *read, int d);
+int markMateDuplicateFlag2(readInfo *read, int d);
+
 char* writeBuff(char **samTokenLines, readInfo **readArr, size_t readNum);
 void zeroCopyBruck(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm);
 CMInfo read2CM(readInfo *read) ;

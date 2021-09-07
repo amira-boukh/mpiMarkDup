@@ -36,7 +36,7 @@ int freeRead(readInfo* read) {
         return -1;
     }
 
-    if (read->Qname) {
+   /*if (read->Qname) {
         free(read->Qname);
         read->Qname = NULL;
     }
@@ -44,9 +44,9 @@ int freeRead(readInfo* read) {
     if (read->cigar) {
         free(read->cigar);
         read->cigar = NULL;
-    }
+    }*/
 
-    free(read);
+    //free(read);
     return 0;
 }
 

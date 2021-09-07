@@ -63,20 +63,22 @@ void get_coordinates_and_offset_source_and_size_and_free_reads(int rank, int *lo
    		size[j] = (int)chr->offset; //read length
         tmp = chr;
         chr = chr->next;
-        free(tmp);
+        //free(tmp);
    	}
 
 }
 
-void get_mate_informations(int rank, int *mate_rank, readInfo* data_chr, size_t local_readNum, size_t *mate_coordinates, int *mates_scores, int *qname_keys, unsigned int *flags, unsigned int *pair_nums, unsigned int *orientations, int *read_lb, int *chr_names, int *mates_chr_names, int *positions_x, int *positions_y, size_t *unclipped_positions){
+void get_mate_informations(int rank, int *mate_rank, readInfo* data_chr, size_t local_readNum, size_t *mate_coordinates, int *read_scores, int *mates_scores, int *qname_keys, unsigned int *flags, unsigned int *pair_nums, unsigned int *orientations, int *read_lb, int *chr_names, int *mates_chr_names, int *positions_x, int *positions_y, size_t *unclipped_positions, size_t *mate_unclipped_positions){
 
 	size_t j; 
 	readInfo* chr = data_chr;
 	readInfo* tmp; 
 
+	
 	//Initialization 
 	for(j = 0; j < local_readNum; j++){
 		mate_coordinates[j] = 0;
+		read_scores[j] = 0;
 		mates_scores[j] = 0;
 		qname_keys[j] = 0;
 		flags[j] = 0;
@@ -88,14 +90,16 @@ void get_mate_informations(int rank, int *mate_rank, readInfo* data_chr, size_t 
 		positions_x[j] = 0;
 		positions_y[j] = 0; 
 		unclipped_positions[j] = 0; 
+		mate_unclipped_positions[j] = 0;
 		mate_rank[j] = rank;
 	}
 
 	//get informations from readInfo structure
 	for(j = 0 ; j < local_readNum ; j++){
 		mate_coordinates[j] = chr->coordMatePos;
-		mates_scores[j] = chr->mate_score; 
-		qname_keys[j] = chr->Qname;
+		read_scores[j] = chr->phred_score;
+		mates_scores[j] = chr->pairPhredScore; 
+		qname_keys[j] = chr->qname_key;
 		flags[j] = chr->valueFlag;
 		pair_nums[j] = chr->pair_num;
 		orientations[j] = chr->orientation;
@@ -105,9 +109,11 @@ void get_mate_informations(int rank, int *mate_rank, readInfo* data_chr, size_t 
 		positions_x[j] = chr->physicalLocation.x;
 		positions_y[j] = chr->physicalLocation.y;
 		unclipped_positions[j] = chr->unclippedCoordPos;
+		mate_unclipped_positions[j] = chr->unclippedMateCoordPos;
 		tmp = chr;
 		chr = chr->next;
 		//free(tmp);
+	
 	}
 }
 

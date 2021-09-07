@@ -325,6 +325,16 @@ void fillUnclippedCoord(readInfo *read) {
     }
 }
 
+void fillMateUnclippedCoord(readInfo *read) {
+    unsigned int mateReverseStrand = readBits((unsigned int)read->valueFlag, 5);
+
+    if (mateReverseStrand){
+        read->unclippedMateCoordPos = getUnclippedEnd(read->coordMatePos, read->mate_cigar);
+    } else {
+        read->unclippedMateCoordPos = getUnclippedStart(read->coordMatePos, read->mate_cigar);
+    }
+}
+
 /**
  * @date 2018 Apr. 16
  * @brief Compute read optical location
@@ -655,6 +665,28 @@ int markMateDuplicateFlag(hashTable *htbl, readInfo *read, int d) {
     return 0;
 }
 
+int markMateDuplicateFlag2(readInfo *read, int d) {
+    readInfo *mate = calloc(1, sizeof(readInfo));
+
+    mate->coordPos = read->coordMatePos;
+    mate->coordMatePos = read->coordPos;
+    mate->phred_score = read->pairPhredScore;
+    mate->pairPhredScore = read->phred_score;
+    mate->unclippedCoordPos = read->unclippedMateCoordPos;
+    mate->unclippedMateCoordPos = read->unclippedCoordPos;
+    mate->qname_key = read->qname_key;
+
+    // found mate and it's not external
+    if (mate) {
+        mate->d       = d;
+        mate->checked = 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+
 
 /**
  * @date 2018 Apr 12
@@ -690,6 +722,7 @@ int areComparableForDuplicates(readInfo *pair1, readInfo *pair2, const int isPai
         areComparable = pair1->coordMatePos == pair2->coordMatePos && pair1->mateChromosome == pair2->mateChromosome;
     }
 
+    //fprintf(stdout,"comparable : %d\n",areComparable);
     return areComparable;
 }
 
@@ -765,7 +798,7 @@ void trackOpticalDuplicates(llist_t *cluster, readInfo *best) {
       not be marked as duplicates.  This assumes that the list contains objects representing pairs.
  */
 
-void markDuplicatePairs(llist_t *cluster, hashTable *htbl, int *totalDuplica, int *totalOpticalDuplicate) {
+void markDuplicatePairs(llist_t *cluster, int *totalDuplica, int *totalOpticalDuplicate) {
 
 
 
@@ -778,7 +811,7 @@ void markDuplicatePairs(llist_t *cluster, hashTable *htbl, int *totalDuplica, in
         
         // we test the phred score
          
-
+        //fprintf(stdout,"pair phred score : %d\n",node->read->pairPhredScore);
         // in case the phred score is better
         if (node->read->pairPhredScore > bestScore || best == NULL) {
             bestScore = node->read->pairPhredScore;
@@ -815,15 +848,16 @@ void markDuplicatePairs(llist_t *cluster, hashTable *htbl, int *totalDuplica, in
             node->read->d = 1;
             node->read->checked = 1;
 
-            readInfo *mate = getMateFromRead(htbl, node->read);
 
             //if (node->read->pair_num == 1) assert(mate->pair_num == 2);
             //if (node->read->pair_num == 2) assert(mate->pair_num == 1);
+            //fprintf(stdout,"index read : %d index mate : %d\n",node->read->indexAfterSort, mate->indexAfterSort);
 
-            if (node->read->indexAfterSort != mate->indexAfterSort) {
-                int mateIsDuplica = markMateDuplicateFlag(htbl, node->read, 1);
-                (*totalDuplica) += 1 + mateIsDuplica;
-            }
+            //if (node->read->indexAfterSort != mate->indexAfterSort) {
+                //fprintf(stderr, "TEST TEST\n");
+                int mateIsDuplica = markMateDuplicateFlag2(node->read, 1);
+                (*totalDuplica) += 1;
+            //}
 
             if (node->read->isOpticalDuplicate) {
                 (*totalOpticalDuplicate)++;
@@ -833,7 +867,9 @@ void markDuplicatePairs(llist_t *cluster, hashTable *htbl, int *totalDuplica, in
 
     best->d = 0;
     best->checked = 1;
-    markMateDuplicateFlag(htbl, best, 0);
+    markMateDuplicateFlag2(best, 0);
+    //fprintf(stdout, "in markDuplicatePair totalDuplicates = %d chr %d\n", *totalDuplica, best->readChromosome);
+
 }
 
 /**
@@ -858,6 +894,7 @@ void markDuplicateFragments(llist_t *cluster, int *totalDuplica, const int conta
             unsigned int readPaired = isPaired(node->read);
 
             if (!readPaired) {
+                //fprintf(stdout,"fragment chr %d\n", node->read->readChromosome);
                 node->read->d = 1;
                 (*totalDuplica)++;
             }
@@ -896,6 +933,7 @@ void markDuplicateFragments(llist_t *cluster, int *totalDuplica, const int conta
             if (node->read != best) {
                 node->read->d = 1;
                 node->read->checked = 1;
+                //fprintf(stdout,"fragment chr %d\n", node->read->readChromosome);
                 (*totalDuplica) += 1;
             }
         }
@@ -904,7 +942,7 @@ void markDuplicateFragments(llist_t *cluster, int *totalDuplica, const int conta
         best->checked = 1;
     }
 
-    //fprintf(stderr, "in markDuplicateFragments totalDuplicates = %d \n", *totalDuplica);
+    //fprintf(stdout, "in markDuplicateFragments totalDuplicates = %d \n", *totalDuplica);
 }
 
 /**
@@ -947,7 +985,7 @@ int countExternalMateInList(llist_t *list, size_t *externalMate) {
  * @note See middle part of function generateDuplicateIndexes() in Markduplicates.java
  */
 
-void findDuplica(llist_t *fragList, llist_t *readEndsList, hashTable *htbl, int *totalDuplica, int *totalOpticalDuplicate, MPI_Comm comm) {
+void findDuplica(llist_t *fragList, llist_t *readEndsList, int *totalDuplica, int *totalOpticalDuplicate, MPI_Comm comm) {
 
     int rank, num_proc;
     MPI_Comm_rank(comm, &rank);
@@ -960,13 +998,13 @@ void findDuplica(llist_t *fragList, llist_t *readEndsList, hashTable *htbl, int 
         if (firstOfNextCluster && areComparableForDuplicates(firstOfNextCluster->read, node->read, 1)) {
             llist_append(nextCluster, node->read);
         } else {
-            if (nextCluster->size > 1) markDuplicatePairs(nextCluster, htbl, totalDuplica, totalOpticalDuplicate);
+            if (nextCluster->size > 1) markDuplicatePairs(nextCluster, totalDuplica, totalOpticalDuplicate);
             llist_clear(nextCluster);
             llist_append(nextCluster, node->read);
             firstOfNextCluster = node;
         }
     }
-    if (nextCluster->size > 1) markDuplicatePairs(nextCluster, htbl, totalDuplica, totalOpticalDuplicate);
+    if (nextCluster->size > 1) markDuplicatePairs(nextCluster, totalDuplica, totalOpticalDuplicate);
     llist_clear(nextCluster);
     int containsPairs = 0;
     int containsFrags = 0;
@@ -1022,7 +1060,7 @@ size_t getMateRankReadSizeBeforeBruck(llist_t *list, mateInfo **mates) {
             (*mates)[k].fingerprint = read->fingerprint;
             (*mates)[k].readLb = read->readLb;
             (*mates)[k].mateRank = read->mate_rank;
-            (*mates)[k].phredScore = read->phred_score;
+            (*mates)[k].phredScore = read->mate_score;
             (*mates)[k].indexAfterSort = read->indexAfterSort;
             (*mates)[k].unclippedCoordPos = read->unclippedCoordPos;
             (*mates)[k].coordPos = read->coordPos;
@@ -1212,7 +1250,7 @@ size_t exchangeAndFillMate_with_Bruck(readInfo ***matesByProc, mateInfo *mates, 
             mate->fingerprint           = rcv_mate_fingerprint[n][k];
             mate->readLb                = rcv_mate_Lb[n][k];
             mate->mate_rank             = rcv_mate_Materank[n][k];
-            mate->phred_score           = rcv_mate_phredscore[n][k];
+            mate->mate_score           = rcv_mate_phredscore[n][k];
             mate->indexAfterSort        = rcv_mate_indexAfterSort[n][k];
             mate->unclippedCoordPos     = rcv_mate_unclippedCoordPos[n][k];
             mate->coordPos              = rcv_mate_coordPos[n][k];
@@ -1366,7 +1404,7 @@ size_t exchangeAndFillMate_with_Bruck_v2(readInfo ***matesByProc,
 
             // Conversion of others fields
             mate->fingerprint           = rcv_mate_fingerprint[n][k];
-            mate->phred_score           = rcv_mate_phredscore[n][k];
+            mate->mate_score           = rcv_mate_phredscore[n][k];
             mate->indexAfterSort        = rcv_mate_indexAfterSort[n][k];
             mate->unclippedCoordPos     = rcv_mate_unclippedCoordPos[n][k];
             mate->coordPos              = rcv_mate_coordPos[n][k];
@@ -1819,6 +1857,7 @@ readInfo *buildReadEnds_v2(readInfo *mate, readInfo *read, llist_t *readEndsList
  *   @todo consider to use a struct to pack readNum and readIndex
  */
 
+
 int parseLibraries(char *bufferReads, 
                     Interval *intervalByProc, 
                     llist_t *fragList, 
@@ -1877,6 +1916,8 @@ int parseLibraries(char *bufferReads,
 
         if (read)  {
             assert(read->valueFlag);
+            fprintf(stdout,"Qname : %s read counter : %ld read index : %ld\n",read->Qname, readCounter, read->indexAfterSort);
+
             
             readPaired = readBits((unsigned int)read->valueFlag, 0);
             mateUnmapped = readBits((unsigned int)read->valueFlag, 3);
@@ -1953,6 +1994,180 @@ int parseLibraries(char *bufferReads,
     // FOR DEBUG
     //  md_log_debug("Ensure reads mate rank which are susceptible in multiple processes ...\n");
     //  ensureMateRank(*readArr, intervalByProc, readNum, comm);
+
+    free(bufferReads);
+    assert(readCounter - readIndex == readNum);
+    return readCounter;
+}
+
+
+int parseLibraries2(char *bufferReads, 
+                    Interval *intervalByProc, 
+                    llist_t *fragList, 
+                    llist_t *readEndsList, 
+                    readInfo ***readArr, 
+                    char ***samTokenLines, 
+                    size_t readNum, 
+                    size_t readIndex, 
+                    chrInfo *chr, 
+                    lbInfo *lb,
+                    readInfo *reads, 
+                    int *qname_keys,
+                    unsigned int *flags,
+                    unsigned int *pair_nums,
+                    unsigned int *orientations,
+                    int *phred_scores,
+                    int *mate_scores,
+                    int *read_Lb,
+                    int *chr_names,
+                    int *chr_mate_names,
+                    int *physical_location_x, 
+                    int *physical_location_y,
+                    size_t *mate_coordinates,
+                    size_t *coordinates,
+                    size_t *unclipped_coordinates,
+                    size_t *mate_unclipped_coordinates,
+                    size_t *reads_buffer_offset_source,
+                    MPI_Comm comm) {
+
+
+    int rank, num_proc;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &num_proc);
+
+    char *q = bufferReads;
+    size_t readCounter = readIndex, percentage = 1, increment = 10;
+    float progression = 0;
+    readInfo *read = NULL;
+
+    /**
+     * Allocate two array :
+     *  1. readArr :: readInfo* array
+     *  2. samTokenLines :: corresponding string array
+     *
+     *  If read is unmapped the read in readArr will be NULL.
+     * */
+
+    *readArr = malloc(readNum * sizeof(readInfo *));
+    *samTokenLines = malloc(readNum * sizeof(char *));
+
+    size_t splitLineSize = (readNum / SPLIT_FACTOR) + 1, splitNumber = 1;
+    khash_t(read)* hash = kh_init(read);
+    khint_t k;
+    int ret;
+    int i = 0;
+
+    size_t readEndscall = 0;
+    size_t counter = 0;
+    while (*q) {
+        progression = 100 * ((float)readCounter / readNum);
+        char *tok;
+        readInfo *read = calloc(1, sizeof(readInfo));  
+
+        // parse read
+        getLine(&q, &tok);
+        //read = readParsing(tok, intervalByProc, readCounter, counter, chr, lb, reads_buffer_offset_source, comm);
+        counter++;
+
+        read->qname_key = qname_keys[i];
+        read->valueFlag = flags[i];
+        read->pair_num = pair_nums[i];
+        read->orientation = orientations[i];
+        read->phred_score = phred_scores[i];
+        read->pairPhredScore = mate_scores[i];
+        read->readLb = read_Lb[i];
+        read->readChromosome = chr_names[i];
+        read->mateChromosome = chr_mate_names[i];
+        read->physicalLocation.x = physical_location_x[i];
+        read->physicalLocation.y = physical_location_y[i];
+        read->coordPos = coordinates[i];
+        read->coordMatePos = mate_coordinates[i];
+        read->unclippedCoordPos = unclipped_coordinates[i];
+        read->unclippedMateCoordPos = mate_unclipped_coordinates[i];
+        
+        if (read) {
+            chr->lastChr = read->readChromosome;
+        }
+
+        // insert and cluster read
+        unsigned int firstInPair, readPaired, mateUnmapped, readUnmapped, secondaryAlignment, supplementaryAlignment;
+
+        if (read)  {
+            assert(read->valueFlag);
+            //fprintf(stdout,"Qname : %s read counter : %ld read index : %ld\n",read->Qname, readCounter, read->indexAfterSort);
+
+            
+            read->indexAfterSort = readCounter;
+
+
+
+            readUnmapped = readBits((unsigned int)read->valueFlag, 2);
+            secondaryAlignment = readBits((unsigned int)read->valueFlag, 8);
+            supplementaryAlignment = readBits((unsigned int)read->valueFlag, 11);
+            readPaired = readBits((unsigned int)read->valueFlag, 0);
+            mateUnmapped = readBits((unsigned int)read->valueFlag, 3);
+            firstInPair = readBits((unsigned int)read->valueFlag, 6);
+
+            if (mateUnmapped) {
+                read->mateChromosome = -1;
+            }
+
+
+            if (firstInPair)
+                read->pair_num = 1;
+            else
+                read->pair_num = 2;
+
+
+            if (i<readNum && !supplementaryAlignment && !secondaryAlignment && !readUnmapped) {
+                insertReadInList(fragList, read);
+            }
+
+            if (i<readNum && !supplementaryAlignment && !secondaryAlignment && !readUnmapped && readPaired && !mateUnmapped) {
+                readInfo *end = calloc(1, sizeof(readInfo));
+
+                end->coordPos = read->coordMatePos;
+                end->coordMatePos = read->coordPos;
+                end->phred_score = read->pairPhredScore;
+                end->pairPhredScore = read->phred_score;
+                end->unclippedCoordPos = read->unclippedMateCoordPos;
+                end->unclippedMateCoordPos = read->unclippedCoordPos;
+                end->qname_key = read->qname_key;
+
+                buildReadEnds(end, read, readEndsList );
+
+                readEndscall++;
+            
+            }
+        }
+
+        i = i + 1;
+
+        (*samTokenLines)[readCounter - readIndex] = tok;
+
+        // keep memory constant by spliting
+        if (readCounter >= splitLineSize * splitNumber) {
+            size_t remainsSize = strlen(q) + 1;
+            memmove(bufferReads, q, remainsSize);
+            bufferReads = realloc(bufferReads, remainsSize);
+            q = bufferReads;
+            splitNumber++;
+        }
+
+        (*readArr)[readCounter - readIndex] = read;
+        readCounter++;
+
+        if (progression > percentage) {
+            md_log_debug("Parsed and sorted %.0f%% of reads\n", progression);
+            percentage += increment;
+        }
+
+    }
+
+    /*for (lnode_t *node = fragList->tail; node != fragList->head; node = node->prev) {
+        fprintf(stdout,"coordinates %zu UncPos %zu mUncPos %zu\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
+        //fragList_size++;
+    } */
 
     free(bufferReads);
     assert(readCounter - readIndex == readNum);
@@ -2056,10 +2271,12 @@ char *writeBuff(char **samTokenLines, readInfo **readArr, size_t readNum) {
     float progression = 0;
 
     for ( i = 0; i < readNum; i++) {
+
         progression = 100 * ((float)i / readNum);
         size_t curMaxLine = splitLineSize * splitNumber;
 
         if (i >= curMaxLine) {
+
             curMaxLine = curMaxLine + splitLineSize > readNum ? readNum : curMaxLine + splitLineSize;
             splitNumber++;
             size_t curSizeOfNewBuff = newBuff ? strlen(newBuff) : 0;
@@ -2080,15 +2297,20 @@ char *writeBuff(char **samTokenLines, readInfo **readArr, size_t readNum) {
 
         } else if (readArr[i]->d) {
             char *newLine = addDuplicateFlag(samTokenLines[i], readArr[i]);
+           // fprintf(stdout,"DUPLICATE\n");
             p = strapp(p, newLine);
             if (newLine) free(newLine);
         }
+        //fprintf(stderr,"TEST\n");
+
 
         if (progression > percentage) {
             md_log_debug("Writed %.0f%% of reads\n", progression);
             percentage += increment;
         }
     }
+
+
 
     return newBuff;
 }
@@ -2456,6 +2678,7 @@ char *markDuplicate (char *bufferReads,
                     &lb, 
                     sam_reads_offset_source,
                     comm);
+    
 
     free( sam_reads_offset_source );
     md_log_debug("End of parsing and clustering %f seconds\n", MPI_Wtime() - timeStamp);
@@ -2465,13 +2688,13 @@ char *markDuplicate (char *bufferReads,
     hashTable *htbl = malloc(sizeof(hashTable));
     readInfo **readArrWithExternal;
 
-    size_t totalReadWithFictitiousMate = fillReadAndFictitiousMate(readArr, &readArrWithExternal, readNum);
+    //size_t totalReadWithFictitiousMate = fillReadAndFictitiousMate(readArr, &readArrWithExternal, readNum);
     //fprintf(stderr, " totalReadWithFictitiousMate = %zu \n", totalReadWithFictitiousMate);
    
-    shareHpAndConstructHtbl(htbl, readArrWithExternal, totalReadWithFictitiousMate, comm);
-    free(readArrWithExternal);
+    //shareHpAndConstructHtbl(htbl, readArrWithExternal, totalReadWithFictitiousMate, comm);
+    //free(readArrWithExternal);
     
-    md_log_debug("Perfect hash table is constructed %f seconds\n", MPI_Wtime() - timeStamp);
+    //md_log_debug("Perfect hash table is constructed %f seconds\n", MPI_Wtime() - timeStamp);
 
 
     /**
@@ -2487,17 +2710,17 @@ char *markDuplicate (char *bufferReads,
    
     md_log_debug("Start to exchange mates ...\n");
     timeStamp = MPI_Wtime();
-    exchangeExternFrag(fragList, readEndsList, htbl, comm) ;
+    //exchangeExternFrag(fragList, readEndsList, htbl, comm) ;
 
     /*
      * we update pairPhredScore in readEndsList
      */
-    for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
+    /*for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
         assert(node->read);
-        readInfo *mate = getMateFromRead(htbl, node->read);
-        node->read->pairPhredScore += mate->phred_score;
+        readInfo *mate = node->read->next;
+        node->read->mate_score += mate->mate_score;
         node->read->mateIndexAfterSort = mate->indexAfterSort;
-    }
+    }*/
     /*
     size_t readEnds_size = 0;
     size_t fragList_size = 0;
@@ -2530,8 +2753,8 @@ char *markDuplicate (char *bufferReads,
      * */
     llist_merge_sort(fragList, 1);
     llist_merge_sort(readEndsList, 0);
-    llist_merge_sort_qnames(fragList);
-    llist_merge_sort_qnames(readEndsList);
+    //llist_merge_sort_qnames(fragList);
+    //llist_merge_sort_qnames(readEndsList);
  
     md_log_debug("Finished to sort list in %f seconds\n", MPI_Wtime() - timeStamp);
 
@@ -2539,7 +2762,7 @@ char *markDuplicate (char *bufferReads,
     timeStamp = MPI_Wtime();
     int localDuplicates = 0, localOpticalDuplicates = 0, totalDuplicates = 0, totalOpticalDuplicates = 0;
     
-    findDuplica(fragList, readEndsList, htbl, &localDuplicates, &localOpticalDuplicates, comm) ;
+    findDuplica(fragList, readEndsList, &localDuplicates, &localOpticalDuplicates, comm) ;
 
 
     md_log_info("Finished to find duplicates in %f seconds\n", totalDuplicates, totalOpticalDuplicates,  MPI_Wtime() - timeStamp);
@@ -2644,6 +2867,7 @@ char *markDuplicate2 (char *bufferReads,
                     unsigned int *flags,
                     unsigned int *pair_nums,
                     unsigned int *orientations,
+                    int *phred_scores,
                     int *mate_scores,
                     int *read_Lb,
                     int *chr_names,
@@ -2653,6 +2877,7 @@ char *markDuplicate2 (char *bufferReads,
                     size_t *mate_coordinates,
                     size_t *coordinates,
                     size_t *unclipped_coordinates, 
+                    size_t *mate_unclipped_coordinates,
                     readInfo* reads) {
 
 
@@ -2682,6 +2907,9 @@ char *markDuplicate2 (char *bufferReads,
         readIndexOffset += readNumByProc[i];
     }
 
+    //fprintf(stdout,"read index offset :%ld\n",readIndexOffset);
+
+
 
     llist_t *fragList = llist_create(), *readEndsList = llist_create();
 
@@ -2693,7 +2921,7 @@ char *markDuplicate2 (char *bufferReads,
     timeStamp = MPI_Wtime();
     readInfo **readArr;
     char **samTokenLines;
-    parseLibraries(bufferReads, 
+    parseLibraries2(bufferReads, 
                     intervalByProc, 
                     fragList, 
                     readEndsList, 
@@ -2703,24 +2931,30 @@ char *markDuplicate2 (char *bufferReads,
                     readIndexOffset, 
                     &chr,  
                     &lb, 
+                    reads,
+                    qname_keys,
+                    flags,
+                    pair_nums,
+                    orientations,
+                    phred_scores,
+                    mate_scores,
+                    read_Lb,
+                    chr_names,
+                    chr_mate_names,
+                    physical_location_x, 
+                    physical_location_y,
+                    mate_coordinates,
+                    coordinates,
+                    unclipped_coordinates,
+                    mate_unclipped_coordinates,
                     sam_reads_offset_source,
                     comm);
 
-    free( sam_reads_offset_source );
+    //free( sam_reads_offset_source );
     md_log_debug("End of parsing and clustering %f seconds\n", MPI_Wtime() - timeStamp);
 
-    md_log_debug("Construct perfect hashing table ...\n");
+    //md_log_debug("Construct perfect hashing table ...\n");
     timeStamp = MPI_Wtime();
-    hashTable *htbl = malloc(sizeof(hashTable));
-    readInfo **readArrWithExternal;
-
-    size_t totalReadWithFictitiousMate = fillReadAndFictitiousMate(readArr, &readArrWithExternal, readNum);
-    //fprintf(stderr, " totalReadWithFictitiousMate = %zu \n", totalReadWithFictitiousMate);
-   
-    shareHpAndConstructHtbl(htbl, readArrWithExternal, totalReadWithFictitiousMate, comm);
-    free(readArrWithExternal);
-    
-    md_log_debug("Perfect hash table is constructed %f seconds\n", MPI_Wtime() - timeStamp);
 
 
     /**
@@ -2733,40 +2967,19 @@ char *markDuplicate2 (char *bufferReads,
      *         via function buildReadEnds().
      */
 
+    for (lnode_t *node = fragList->head; node != fragList->nil; node = node->next) {
+        fprintf(stdout,"coordinates %ld UncPos %ld mUncPos %ld\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
+        //fragList_size++;
+    }  
    
-    md_log_debug("Start to exchange mates ...\n");
     timeStamp = MPI_Wtime();
-    exchangeExternFrag(fragList, readEndsList, htbl, comm) ;
 
-    /*
-     * we update pairPhredScore in readEndsList
-     */
-    for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
-        assert(node->read);
-        readInfo *mate = getMateFromRead(htbl, node->read);
-        node->read->pairPhredScore += mate->phred_score;
-        node->read->mateIndexAfterSort = mate->indexAfterSort;
-    }
-    /*
+    llist_merge_sort(fragList, 1);
+    llist_merge_sort(readEndsList, 0);
+    
     size_t readEnds_size = 0;
     size_t fragList_size = 0;
     
-    for (lnode_t *node = fragList->head; node != fragList->nil; node = node->next) {
-        //md_log_trace("lb=%zu, chr=%zu, unclippedCoordPos=%zu, orientation=%zu, mchr=%zu, mateUnclippedCoordPos=%zu, rindex=%zu, mindex=%zu\n", read->readLb, read->readChromosome, read->unclippedCoordPos, read->orientation, read->mateChromosome, read->coordMatePos, read->indexAfterSort, read->mateIndexAfterSort);
-        fragList_size++;
-    }    
-    
-    for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
-        //md_log_trace("lb=%zu, chr=%zu, unclippedCoordPos=%zu, orientation=%zu, mchr=%zu, mateUnclippedCoordPos=%zu, rindex=%zu, mindex=%zu\n", read->readLb, read->readChromosome, read->unclippedCoordPos, read->orientation, read->mateChromosome, read->coordMatePos, read->indexAfterSort, read->mateIndexAfterSort);
-        readEnds_size++;
-    }
-    
-   fprintf(stderr, " TRACE 4 readEndsList size = %zu :::: fragList size =%zu \n", readEnds_size, fragList_size);
-    */
-
-
-
-    md_log_debug("Finished to exchange mate in %f seconds\n", MPI_Wtime() - timeStamp);
 
     md_log_debug("Start to sort fragments list and read ends list ...\n");
     timeStamp = MPI_Wtime();
@@ -2777,10 +2990,7 @@ char *markDuplicate2 (char *bufferReads,
      * TODO: If this merge sort work fine, replace insertReadInList() by
      *       llist_append() in all occurrences.
      * */
-    llist_merge_sort(fragList, 1);
-    llist_merge_sort(readEndsList, 0);
-    llist_merge_sort_qnames(fragList);
-    llist_merge_sort_qnames(readEndsList);
+    
  
     md_log_debug("Finished to sort list in %f seconds\n", MPI_Wtime() - timeStamp);
 
@@ -2788,7 +2998,7 @@ char *markDuplicate2 (char *bufferReads,
     timeStamp = MPI_Wtime();
     int localDuplicates = 0, localOpticalDuplicates = 0, totalDuplicates = 0, totalOpticalDuplicates = 0;
     
-    findDuplica(fragList, readEndsList, htbl, &localDuplicates, &localOpticalDuplicates, comm) ;
+    findDuplica(fragList, readEndsList, &localDuplicates, &localOpticalDuplicates, comm) ;
 
 
     md_log_info("Finished to find duplicates in %f seconds\n", totalDuplicates, totalOpticalDuplicates,  MPI_Wtime() - timeStamp);
@@ -2875,7 +3085,7 @@ char *markDuplicate2 (char *bufferReads,
     freeChrInfo(&chr);
     freeLbInfo(&lb);
 
-    hashTableDestroy(htbl);
+    //hashTableDestroy(htbl);
     md_log_trace("Finished to free data structures in %f seconds\n", MPI_Wtime() - timeStamp);
     md_log_debug("Total time spent in mark duplicates %f seconds\n", MPI_Wtime() - timeStart);
     md_set_log_comm(previousComm);

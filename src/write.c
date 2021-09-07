@@ -155,6 +155,10 @@ void bruckWrite2(
     size_t ***data_mate_coordinates,
     size_t *new_unclipped_positions,
     size_t ***data_unclipped_coordinates,
+    size_t *new_mate_unclipped_positions,
+    size_t ***data_mate_unclipped_positions,
+    int *new_phred_scores,
+    int ***data_phred_scores,
     int *new_mate_scores,
     int ***data_mate_score,
     int *new_Qname_keys,
@@ -195,6 +199,8 @@ void bruckWrite2(
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *data_mate_chr, new_rank, read_chr_mate_names);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *data_physical_location_x, new_rank, new_physical_location_x);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *data_physical_location_y, new_rank, new_physical_location_y);
+    bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *data_phred_scores, new_rank, new_phred_scores);
+    bruck_offsets(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *data_mate_unclipped_positions, new_rank, new_mate_unclipped_positions);
     
 }
 
@@ -225,6 +231,8 @@ void bruckWrite3(
     unsigned int ***pair_nums,
     unsigned int *new_orientations,
     unsigned int ***orientations,
+    int *new_phred_scores,
+    int ***phred_scores,
     int *new_mate_scores, 
     int ***mate_scores,
     int *new_mate_ranks,
@@ -242,7 +250,9 @@ void bruckWrite3(
     size_t *new_mate_coordinates,
     size_t ***mate_coordinates,
     size_t *new_unclipped_positions, 
-    size_t ***unclipped_positions
+    size_t ***unclipped_positions,
+    size_t *new_mate_unclipped_coordinates,
+    size_t ***mate_unclipped_coordinates
 ) {
 
 
@@ -256,6 +266,7 @@ void bruckWrite3(
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *flags, new_rank, new_flags);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *pair_nums, new_rank, new_pair_nums);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *orientations, new_rank, new_orientations);
+    bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *phred_scores, new_rank, new_phred_scores);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *mate_scores, new_rank, new_mate_scores);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *mate_ranks, new_rank, new_mate_ranks);
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *chr_names, new_rank, new_chr_names);
@@ -265,6 +276,7 @@ void bruckWrite3(
     bruck_size(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *physical_location_y, new_rank, new_physical_location_y);
     bruck_offsets(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *mate_coordinates, new_rank, new_mate_coordinates);
     bruck_offsets(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *unclipped_positions, new_rank, new_unclipped_positions);
+    bruck_offsets(comm, rank, num_proc, local_readNum, number_of_reads_by_procs, *mate_unclipped_coordinates, new_rank, new_mate_unclipped_coordinates);
 
 }
 
@@ -818,17 +830,20 @@ void writeSam(
     int *source_rank_phase1,
     size_t *read_coordinates,
     size_t *read_mate_coordinates,
+    int *read_phred_scores,
     int *read_mate_scores,
     int *read_Qname_keys,
     unsigned int *read_flags,
     unsigned int *read_pair_nums,
     unsigned int *read_orientations, 
+    int *read_mate_ranks,
     int *read_Lb,
     int *read_chr_names,
     int *read_chr_mate_names,
     int *read_physical_location_x,
     int *read_physical_location_y,
     size_t *read_unclipped_positions,
+    size_t *mate_unclipped_positions,
     char *data,
     size_t start_offset_in_file,
     size_t previous_local_readNum,
@@ -864,6 +879,7 @@ void writeSam(
      *
      */
 
+    
     size_t j;
     size_t k;
     int ierr;
@@ -874,6 +890,10 @@ void writeSam(
  
     MPI_Status status;
 
+    /*for(int i = 0 ; i<local_readNum; i++){
+        fprintf(stdout,"coordinates : %ld UncPos %ld  mUncPos %ld\n",read_coordinates[i], read_unclipped_positions[i], mate_unclipped_positions[i]);
+    }*/
+
     /*
      * phase 1 variables
      */
@@ -883,6 +903,23 @@ void writeSam(
     int *pbs_read_size_phase1;
     int *pbs_dest_rank_phase1;
     int *pbs_orig_rank_off_phase1;
+    size_t *pbs_read_coordinates;
+    size_t *pbs_mate_coordinates;
+    int *pbs_read_phred_scores;
+    int *pbs_mate_scores;
+    int *pbs_qname_keys; 
+    unsigned int *pbs_flags;
+    unsigned int *pbs_pair_nums;
+    unsigned int *pbs_orientations;
+    int *pbs_read_mate_ranks;
+    int *pbs_read_Lb;
+    int *pbs_read_chr_names;
+    int *pbs_read_chr_mate_names;
+    int *pbs_read_physical_location_x;
+    int *pbs_read_physical_location_y;
+    size_t *pbs_read_unclipped_positions;
+    size_t *pbs_mate_unclipped_positions;
+
 
     /*
      * variables for first Bruck
@@ -893,6 +930,23 @@ void writeSam(
     int    *new_pbs_read_size_phase1        = NULL;
     int    *new_pbs_dest_rank_phase1        = NULL;
     int    *new_pbs_orig_rank_off_phase1    = NULL;
+    size_t *new_pbs_read_coordinates        = NULL;
+    size_t *new_pbs_mate_coordinates        = NULL;
+    int *new_pbs_read_phred_scores          = NULL;
+    int *new_pbs_mate_scores                = NULL;
+    int *new_pbs_qname_keys                 = NULL; 
+    unsigned int *new_pbs_flags             = NULL;
+    unsigned int *new_pbs_pair_nums         = NULL;
+    unsigned int *new_pbs_orientations      = NULL;
+    int *new_pbs_read_mate_ranks            = NULL;
+    int *new_pbs_read_Lb                    = NULL;
+    int *new_pbs_read_chr_names             = NULL;
+    int *new_pbs_read_chr_mate_names        = NULL;
+    int *new_pbs_read_physical_location_x   = NULL;
+    int *new_pbs_read_physical_location_y   = NULL;
+    size_t *new_pbs_read_unclipped_positions= NULL;
+    size_t *new_pbs_mate_unclipped_positions= NULL;
+
 
     //size_t *local_offset_destination_bruck;       
     
@@ -915,6 +969,23 @@ void writeSam(
     pbs_orig_rank_off_phase1 = calloc(max_num_read, sizeof(size_t));
     pbs_read_size_phase1     = calloc(max_num_read, sizeof(int));
     pbs_dest_rank_phase1     = calloc(max_num_read, sizeof(int));
+    pbs_read_coordinates     = calloc(max_num_read, sizeof(size_t));
+    pbs_mate_coordinates     = calloc(max_num_read, sizeof(size_t));
+    pbs_read_phred_scores    = calloc(max_num_read, sizeof(int));
+    pbs_mate_scores          = calloc(max_num_read, sizeof(int));
+    pbs_qname_keys           = calloc(max_num_read, sizeof(int));
+    pbs_flags                = calloc(max_num_read, sizeof(unsigned int));
+    pbs_pair_nums            = calloc(max_num_read, sizeof(unsigned int));
+    pbs_orientations         = calloc(max_num_read, sizeof(unsigned int));
+    pbs_read_mate_ranks      = calloc(max_num_read, sizeof(int));
+    pbs_read_Lb              = calloc(max_num_read, sizeof(int));
+    pbs_read_chr_names       = calloc(max_num_read, sizeof(int));
+    pbs_read_chr_mate_names  = calloc(max_num_read, sizeof(int));
+    pbs_read_physical_location_x = calloc(max_num_read, sizeof(int));
+    pbs_read_physical_location_y = calloc(max_num_read, sizeof(int));
+    pbs_read_unclipped_positions = calloc(max_num_read, sizeof(size_t));
+    pbs_mate_unclipped_positions = calloc(max_num_read, sizeof(size_t));
+
 
     size_t m = 0;
     int m2 = 0;
@@ -925,6 +996,23 @@ void writeSam(
         pbs_read_size_phase1[m]     = read_size_phase1[m];
         pbs_dest_rank_phase1[m]     = dest_rank_phase1[m];
         pbs_orig_rank_off_phase1[m] = source_rank_phase1[m];
+        pbs_read_coordinates[m]     = read_coordinates[m];
+        pbs_mate_coordinates[m]     = read_mate_coordinates[m];
+        pbs_read_phred_scores[m]    = read_phred_scores[m];
+        pbs_mate_scores[m]          = read_mate_scores[m];
+        pbs_qname_keys[m]           = read_Qname_keys[m];
+        pbs_flags[m]                = read_flags[m];
+        pbs_pair_nums[m]            = read_pair_nums[m];
+        pbs_orientations[m]         = read_orientations[m];
+        pbs_read_mate_ranks[m]      = read_mate_ranks[m];
+        pbs_read_Lb[m]              = read_Lb[m];
+        pbs_read_chr_names[m]       = read_chr_names[m];
+        pbs_read_chr_mate_names[m]  = read_chr_mate_names[m];
+        pbs_read_physical_location_x[m] = read_physical_location_x[m];
+        pbs_read_physical_location_y[m] = read_physical_location_y[m];
+        pbs_read_unclipped_positions[m] = read_unclipped_positions[m];
+        pbs_mate_unclipped_positions[m] = mate_unclipped_positions[m];
+
     }
 
     free(offset_dest_phase1);
@@ -932,6 +1020,23 @@ void writeSam(
     free(read_size_phase1);
     free(dest_rank_phase1);
     free(source_rank_phase1);
+    free(read_coordinates);
+    free(read_mate_coordinates);
+    free(read_phred_scores);
+    free(read_mate_scores);
+    free(read_Qname_keys);
+    free(read_flags);
+    free(read_pair_nums);
+    free(read_orientations);
+    free(read_mate_ranks);
+    free(read_Lb);
+    free(read_chr_names);
+    free(read_chr_mate_names);
+    free(read_physical_location_x);
+    free(read_physical_location_y);
+    free(read_unclipped_positions);
+    free(mate_unclipped_positions);
+
 
     /*
      *
@@ -962,7 +1067,7 @@ void writeSam(
 
     // we sort source offsets
     time_count = MPI_Wtime();
-    ParallelBitonicSort2(
+    /*ParallelBitonicSort2(
         split_comm,
         rank,
         dimensions,
@@ -972,7 +1077,42 @@ void writeSam(
         pbs_offset_dest_phase1,
         pbs_orig_rank_off_phase1,
         max_num_read
+    );*/
+
+    
+
+    ParallelBitonicSortAll2(
+        split_comm,
+        rank,
+        dimensions,
+        pbs_offset_source_phase1,
+        pbs_read_size_phase1,
+        pbs_dest_rank_phase1,
+        pbs_offset_dest_phase1,
+        pbs_read_coordinates,
+        pbs_orig_rank_off_phase1,
+        pbs_qname_keys,
+        pbs_flags,
+        pbs_pair_nums,
+        pbs_orientations,
+        pbs_read_phred_scores,
+        pbs_mate_scores,
+        pbs_read_Lb,
+        pbs_read_chr_names,
+        pbs_read_chr_mate_names,
+        pbs_read_mate_ranks,
+        pbs_read_physical_location_x,
+        pbs_read_physical_location_y,
+        pbs_mate_coordinates,
+        pbs_read_unclipped_positions,
+        pbs_mate_unclipped_positions,
+        max_num_read
     );
+
+    //fprintf(stdout,"coordinates : %ld mate score %d\n",pbs_mate_coordinates[local_readNum-1], pbs_mate_scores[local_readNum-1]);
+
+
+
 
     MPI_Barrier(split_comm);
 
@@ -1045,6 +1185,22 @@ void writeSam(
         new_pbs_read_size_phase1        = calloc( (local_readNum - tmp2), sizeof(int));
         new_pbs_dest_rank_phase1        = calloc( (local_readNum - tmp2), sizeof(int));
         new_pbs_orig_rank_off_phase1    = calloc( (local_readNum - tmp2), sizeof(int));
+        new_pbs_read_coordinates        = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_mate_coordinates        = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_read_phred_scores       = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_mate_scores             = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_qname_keys              = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_flags                   = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_pair_nums               = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_orientations            = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_read_mate_ranks         = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_Lb                 = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_chr_names          = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_chr_mate_names     = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_physical_location_x = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_physical_location_y = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_unclipped_positions = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_mate_unclipped_positions = calloc((local_readNum - tmp2), sizeof(size_t));
 
         for (j = 0; j < (local_readNum - tmp2); j++) {
             new_pbs_offset_source_phase1[j] = pbs_offset_source_phase1[j + tmp2];
@@ -1052,6 +1208,22 @@ void writeSam(
             new_pbs_dest_rank_phase1[j]     = pbs_dest_rank_phase1[j + tmp2];
             new_pbs_orig_rank_off_phase1[j] = pbs_orig_rank_off_phase1[j + tmp2];
             new_pbs_offset_dest_phase1[j]   = pbs_offset_dest_phase1[j + tmp2];
+            new_pbs_read_coordinates[j]     = pbs_read_coordinates[j + tmp2];
+            new_pbs_mate_coordinates[j]     = pbs_mate_coordinates[j + tmp2];
+            new_pbs_read_phred_scores[j]    = pbs_read_phred_scores[j + tmp2];
+            new_pbs_mate_scores[j]          = pbs_mate_scores[j + tmp2];
+            new_pbs_qname_keys[j]           = pbs_qname_keys[j + tmp2];
+            new_pbs_flags[j]                = pbs_flags[j + tmp2];
+            new_pbs_pair_nums[j]            = pbs_pair_nums[j + tmp2];
+            new_pbs_orientations[j]         = pbs_orientations[j + tmp2];
+            new_pbs_read_mate_ranks[j]      = pbs_read_mate_ranks[j + tmp2];
+            new_pbs_read_Lb[j]              = pbs_read_Lb[j + tmp2];
+            new_pbs_read_chr_names[j]       = pbs_read_chr_names[j + tmp2];
+            new_pbs_read_chr_mate_names[j]  = pbs_read_chr_mate_names[j + tmp2];
+            new_pbs_read_physical_location_x[j] = pbs_read_physical_location_x[j + tmp2];
+            new_pbs_read_physical_location_y[j] = pbs_read_physical_location_y[j + tmp2];
+            new_pbs_read_unclipped_positions[j] = pbs_read_unclipped_positions[j + tmp2];
+            new_pbs_mate_unclipped_positions[j] = pbs_mate_unclipped_positions[j + tmp2];
         }
 
         /*
@@ -1069,6 +1241,8 @@ void writeSam(
         num_read_for_bruck = local_readNum - tmp2;
     }
 
+    
+
     if (tmp2 == max_num_read) {
 
         size_t numItems = 0;
@@ -1078,6 +1252,23 @@ void writeSam(
         new_pbs_read_size_phase1        = malloc(numItems * sizeof(int));
         new_pbs_dest_rank_phase1        = malloc(numItems * sizeof(int));
         new_pbs_orig_rank_off_phase1    = malloc(numItems * sizeof(int));
+        new_pbs_read_coordinates        = malloc(numItems * sizeof(size_t));
+        new_pbs_mate_coordinates        = malloc(numItems * sizeof(size_t));
+        new_pbs_read_phred_scores       = malloc(numItems * sizeof(int));
+        new_pbs_mate_scores             = malloc(numItems * sizeof(int));
+        new_pbs_qname_keys              = malloc(numItems * sizeof(int));
+        new_pbs_flags                   = malloc(numItems * sizeof(unsigned int));
+        new_pbs_pair_nums               = malloc(numItems * sizeof(unsigned int));
+        new_pbs_orientations            = malloc(numItems * sizeof(unsigned int));
+        new_pbs_read_mate_ranks         = malloc(numItems * sizeof(int));
+        new_pbs_read_Lb                 = malloc(numItems * sizeof(int));
+        new_pbs_read_chr_names          = malloc(numItems * sizeof(int));
+        new_pbs_read_chr_mate_names     = malloc(numItems * sizeof(int));
+        new_pbs_read_physical_location_x = malloc(numItems * sizeof(int));
+        new_pbs_read_physical_location_y = malloc(numItems * sizeof(int));
+        new_pbs_read_unclipped_positions = malloc(numItems * sizeof(size_t));
+        new_pbs_mate_unclipped_positions = malloc(numItems * sizeof(size_t));
+
 
         num_read_for_bruck = 0;
     }
@@ -1090,6 +1281,30 @@ void writeSam(
     free(pbs_dest_rank_phase1);
     free(pbs_orig_rank_off_phase1);
     free(pbs_offset_dest_phase1);
+    free(pbs_read_coordinates);
+    free(pbs_mate_coordinates);
+    free(pbs_read_phred_scores);
+    free(pbs_mate_scores);
+    free(pbs_qname_keys);
+    free(pbs_flags);
+    free(pbs_pair_nums);
+    free(pbs_orientations);
+    free(pbs_read_mate_ranks);
+    free(pbs_read_Lb);
+    free(pbs_read_chr_names);
+    free(pbs_read_chr_mate_names);
+    free(pbs_read_physical_location_x);
+    free(pbs_read_physical_location_y);
+    free(pbs_read_unclipped_positions);
+    free(pbs_mate_unclipped_positions);
+
+
+
+    
+
+    
+
+
     /*
      * Now we dipatch the vectors:
      *      read_size,
@@ -1109,6 +1324,7 @@ void writeSam(
     unsigned int *read_flags_sorted_bruck               = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_pair_nums_sorted_bruck           = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_orientations_sorted_bruck        = malloc(previous_local_readNum * sizeof(unsigned int));
+    int *read_phred_scores_sorted_bruck                 = malloc(previous_local_readNum * sizeof(int));
     int *read_mate_scores_sorted_bruck                  = malloc(previous_local_readNum * sizeof(int));
     int *read_Lb_sorted_bruck                           = malloc(previous_local_readNum * sizeof(int));
     int *read_chr_names_sorted_bruck                    = malloc(previous_local_readNum * sizeof(int));
@@ -1118,6 +1334,7 @@ void writeSam(
     size_t *read_coordinates_sorted_bruck               = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_mate_coordinates_sorted_bruck          = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_unclipped_positions_sorted_bruck       = malloc(previous_local_readNum * sizeof(size_t));
+    size_t *mate_unclipped_positions_sorted_bruck       = malloc(previous_local_readNum * sizeof(size_t));
 
     int num_proc = dimensions;
     size_t *number_of_reads_by_procs = calloc( dimensions, sizeof(size_t));
@@ -1142,19 +1359,21 @@ void writeSam(
     int **read_size                 = malloc(sizeof(int *) * dimensions);
     int **dest_rank                 = malloc(sizeof(int *) * dimensions);
 
-    size_t **data_coordinates = malloc(sizeof(size_t *) * num_proc);
-    size_t **data_mate_coordinates = malloc(sizeof(size_t *) * num_proc);
-    size_t **data_unclipped_coordinates = malloc(sizeof(size_t *) * num_proc );
-    int **data_mate_score = malloc(sizeof(int *) * num_proc);
-    int **data_keys = malloc(sizeof(int *) * num_proc);
-    unsigned int **data_flags = malloc(sizeof(unsigned int *) * num_proc);
-    unsigned int **data_pair_nums = malloc(sizeof(unsigned int *) * num_proc);
-    unsigned int **data_orientations = malloc(sizeof(unsigned int *) * num_proc);
-    int **data_readLb = malloc(sizeof(int *) * num_proc);
-    int **data_chr = malloc(sizeof(int *) * num_proc);
-    int **data_mate_chr = malloc(sizeof(int *) * num_proc);
-    int **data_physical_location_x = malloc(sizeof(int *) * num_proc);
-    int **data_physical_location_y = malloc(sizeof(int *) * num_proc);
+    size_t **data_coordinates = malloc(sizeof(size_t *) * dimensions);
+    size_t **data_mate_coordinates = malloc(sizeof(size_t *) * dimensions);
+    size_t **data_unclipped_coordinates = malloc(sizeof(size_t *) * dimensions );
+    size_t **data_mate_unclipped_coordinates = malloc(sizeof(size_t *) * dimensions);
+    int **data_phred_scores = malloc(sizeof(int *) * dimensions);
+    int **data_mate_score = malloc(sizeof(int *) * dimensions);
+    int **data_keys = malloc(sizeof(int *) * dimensions);
+    unsigned int **data_flags = malloc(sizeof(unsigned int *) * dimensions);
+    unsigned int **data_pair_nums = malloc(sizeof(unsigned int *) * dimensions);
+    unsigned int **data_orientations = malloc(sizeof(unsigned int *) * dimensions);
+    int **data_readLb = malloc(sizeof(int *) * dimensions);
+    int **data_chr = malloc(sizeof(int *) * dimensions);
+    int **data_mate_chr = malloc(sizeof(int *) * dimensions);
+    int **data_physical_location_x = malloc(sizeof(int *) * dimensions);
+    int **data_physical_location_y = malloc(sizeof(int *) * dimensions);
 
 
     /*
@@ -1178,6 +1397,8 @@ void writeSam(
 
     time_count = MPI_Wtime();
 
+    
+
 
 
     bruckWrite2(
@@ -1195,52 +1416,61 @@ void writeSam(
         &local_source_offsets,
         new_pbs_read_size_phase1,
         &read_size,
-        read_coordinates,
+        new_pbs_read_coordinates,
         &data_coordinates,
-        read_mate_coordinates,
+        new_pbs_mate_coordinates,
         &data_mate_coordinates,
-        read_unclipped_positions,
+        new_pbs_read_unclipped_positions,
         &data_unclipped_coordinates,
-        read_mate_scores,
+        new_pbs_mate_unclipped_positions,
+        &data_mate_unclipped_coordinates,
+        new_pbs_read_phred_scores,
+        &data_phred_scores,
+        new_pbs_mate_scores,
         &data_mate_score,
-        read_Qname_keys,
+        new_pbs_qname_keys,
         &data_keys,
-        read_flags,
+        new_pbs_flags,
         &data_flags,
-        read_pair_nums,
+        new_pbs_pair_nums,
         &data_pair_nums,
-        read_orientations,
+        new_pbs_orientations,
         &data_orientations,
-        read_Lb,
+        new_pbs_read_Lb,
         &data_readLb,
-        read_chr_names,
+        new_pbs_read_chr_names,
         &data_chr,
-        read_chr_mate_names,
+        new_pbs_read_chr_mate_names,
         &data_mate_chr,
-        read_physical_location_x,
+        new_pbs_read_physical_location_x,
         &data_physical_location_x,
-        read_physical_location_y,
+        new_pbs_read_physical_location_y,
         &data_physical_location_y
     );
+
 
     free(new_pbs_offset_dest_phase1);
     free(new_pbs_offset_source_phase1);
     free(new_pbs_read_size_phase1);
     free(new_pbs_dest_rank_phase1);
     free(new_pbs_orig_rank_off_phase1);
-    free(read_coordinates);
-    free(read_mate_coordinates);
-    free(read_unclipped_positions);
-    free(read_mate_scores);
-    free(read_Qname_keys);
-    free(read_flags);
-    free(read_pair_nums);
-    free(read_orientations);
-    free(read_Lb);
-    free(read_chr_names);
-    free(read_chr_mate_names);
-    free(read_physical_location_x);
-    free(read_physical_location_y);
+    free(new_pbs_read_coordinates);
+    free(new_pbs_mate_coordinates);
+    free(new_pbs_read_unclipped_positions);
+    free(new_pbs_mate_scores);
+    free(new_pbs_qname_keys);
+    free(new_pbs_flags);
+    free(new_pbs_pair_nums);
+    free(new_pbs_orientations);
+    free(new_pbs_read_Lb);
+    free(new_pbs_read_chr_names);
+    free(new_pbs_read_chr_mate_names);
+    free(new_pbs_read_physical_location_x);
+    free(new_pbs_read_physical_location_y);
+    free(new_pbs_read_phred_scores);
+    free(new_pbs_mate_unclipped_positions);
+
+    
 
     /*
      * Now get the offset source, destination and sizes
@@ -1257,6 +1487,7 @@ void writeSam(
      *
      */
 
+
     j = 0;
 
     for (m2= 0; m2 < num_proc; m2++) {
@@ -1272,12 +1503,14 @@ void writeSam(
             read_chr_names_sorted_bruck[k + j]              = data_chr[m2][k];
             read_chr_mate_names_sorted_bruck[k + j]         = data_mate_chr[m2][k];
             read_Lb_sorted_bruck[k + j]                     = data_readLb[m2][k];
+            read_phred_scores_sorted_bruck[k + j]           = data_phred_scores[m2][k];
             read_mate_scores_sorted_bruck[k + j]            = data_mate_score[m2][k];
             read_physical_location_x_sorted_bruck[k + j]    = data_physical_location_x[m2][k];
             read_physical_location_y_sorted_bruck[k + j]    = data_physical_location_y[m2][k];
             read_mate_coordinates_sorted_bruck[k + j]       = data_mate_coordinates[m2][k];
             read_coordinates_sorted_bruck[k + j]            = data_coordinates[m2][k];
             read_unclipped_positions_sorted_bruck[k + j]    = data_unclipped_coordinates[m2][k];
+            mate_unclipped_positions_sorted_bruck[k + j]    = data_mate_unclipped_coordinates[m2][k];
         }
 
         free(local_source_offsets[m2]);
@@ -1297,10 +1530,13 @@ void writeSam(
         free(data_mate_coordinates[m2]);
         free(data_coordinates[m2]);
         free(data_unclipped_coordinates[m2]);
+        free(data_phred_scores[m2]);
+        free(data_mate_unclipped_coordinates[m2]);
         j += number_of_reads_by_procs[m2];
 
     }
 
+    
     assert( j == previous_local_readNum );
 
     for (k = 0; k < previous_local_readNum; k++) {
@@ -1319,6 +1555,8 @@ void writeSam(
     base_arr2 = new_local_offset_source_sorted_bruck;
     qksort(coord_index, previous_local_readNum, 0, previous_local_readNum - 1, compare_size_t);
 
+
+
     int *new_local_reads_sizes_sorted_bruck2        	= malloc(previous_local_readNum * sizeof(int));
     int *new_local_reads_dest_rank_sorted_bruck2        = malloc(previous_local_readNum * sizeof(int));
     size_t *new_local_offset_destination_bruck2     	= malloc(previous_local_readNum * sizeof(size_t));
@@ -1327,6 +1565,7 @@ void writeSam(
     unsigned int *read_flags_sorted_bruck2               = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_pair_nums_sorted_bruck2           = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_orientations_sorted_bruck2        = malloc(previous_local_readNum * sizeof(unsigned int));
+    int *read_phred_scores_sorted_bruck2                  = malloc(previous_local_readNum * sizeof(int));
     int *read_mate_scores_sorted_bruck2                  = malloc(previous_local_readNum * sizeof(int));
     int *read_Lb_sorted_bruck2                           = malloc(previous_local_readNum * sizeof(int));
     int *read_chr_names_sorted_bruck2                    = malloc(previous_local_readNum * sizeof(int));
@@ -1336,6 +1575,7 @@ void writeSam(
     size_t *read_coordinates_sorted_bruck2               = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_mate_coordinates_sorted_bruck2          = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_unclipped_positions_sorted_bruck2       = malloc(previous_local_readNum * sizeof(size_t));
+    size_t *mate_unclipped_positions_sorted_bruck2       = malloc(previous_local_readNum * sizeof(size_t));
 
   
     //We index data
@@ -1349,6 +1589,7 @@ void writeSam(
         read_flags_sorted_bruck2[j]                         = read_flags_sorted_bruck[coord_index[j]];
         read_pair_nums_sorted_bruck2[j]                     = read_pair_nums_sorted_bruck[coord_index[j]];
         read_orientations_sorted_bruck2[j]                  = read_orientations_sorted_bruck[coord_index[j]];
+        read_phred_scores_sorted_bruck2[j]                  = read_phred_scores_sorted_bruck[coord_index[j]];
         read_mate_scores_sorted_bruck2[j]                   = read_mate_scores_sorted_bruck[coord_index[j]];
         read_Lb_sorted_bruck2[j]                            = read_Lb_sorted_bruck[coord_index[j]];
         read_chr_names_sorted_bruck2[j]                     = read_chr_names_sorted_bruck[coord_index[j]];
@@ -1358,8 +1599,11 @@ void writeSam(
         read_coordinates_sorted_bruck2[j]                   = read_coordinates_sorted_bruck[coord_index[j]]; 
         read_mate_coordinates_sorted_bruck2[j]              = read_mate_coordinates_sorted_bruck[coord_index[j]]; 
         read_unclipped_positions_sorted_bruck2[j]           = read_unclipped_positions_sorted_bruck[coord_index[j]];
+        mate_unclipped_positions_sorted_bruck2[j]           = mate_unclipped_positions_sorted_bruck[coord_index[j]];
      
     }
+
+    
 
     free(new_local_offset_source_sorted_bruck);
     free(new_local_reads_sizes_sorted_bruck);
@@ -1378,7 +1622,15 @@ void writeSam(
     free(read_coordinates_sorted_bruck);
     free(read_mate_coordinates_sorted_bruck);
     free(read_unclipped_positions_sorted_bruck);
+    free(read_phred_scores_sorted_bruck);
+    free(mate_unclipped_positions_sorted_bruck);
     free(coord_index);
+
+    /*for(int j = 0; j<previous_local_readNum; j++){
+        fprintf(stdout,"mate score : %d\n", read_unclipped_positions_sorted_bruck2[j]);
+    }
+
+    fprintf(stdout,"\n\n");*/
 
     malloc_trim(0);
 
@@ -1470,6 +1722,14 @@ void writeSam(
 
     if (data_coordinates != NULL) {
         free(data_coordinates);
+    }
+
+    if (data_phred_scores != NULL) {
+        free(data_phred_scores);
+    }
+
+    if (data_mate_unclipped_coordinates != NULL) {
+        free(data_mate_unclipped_coordinates);
     }
 
     /*
@@ -1645,7 +1905,6 @@ void writeSam(
         &data_offsets_sources,
         new_local_reads_sizes_sorted_bruck2,
         &data_size
-        
     );
 
     
@@ -1798,6 +2057,10 @@ void writeSam(
    
     char *char_buff_uncompressed_with_duplicates = NULL;
     // sam_reads_offsets_source_sorted is freed in markduplicate
+
+
+    
+    
     
     char_buff_uncompressed_with_duplicates = markDuplicate2 (char_buff_uncompressed, 
                                                             previous_local_readNum, 
@@ -1810,6 +2073,7 @@ void writeSam(
                                                             read_flags_sorted_bruck2,
                                                             read_pair_nums_sorted_bruck2,
                                                             read_orientations_sorted_bruck2,
+                                                            read_phred_scores_sorted_bruck2,
                                                             read_mate_scores_sorted_bruck2,
                                                             read_Lb_sorted_bruck2,
                                                             read_chr_names_sorted_bruck2,
@@ -1818,7 +2082,8 @@ void writeSam(
                                                             read_physical_location_y_sorted_bruck2,
                                                             read_mate_coordinates_sorted_bruck2,
                                                             read_coordinates_sorted_bruck2,
-                                                            read_unclipped_positions_sorted_bruck,
+                                                            read_unclipped_positions_sorted_bruck2,
+                                                            mate_unclipped_positions_sorted_bruck2,
                                                             chr);
     
 
@@ -2292,7 +2557,7 @@ void writeSam(
    
 }
 
-size_t * writeSam_discordant(
+size_t *writeSam_discordant(
     int rank,
     char *output_dir,
     char *header,
@@ -2310,27 +2575,32 @@ size_t * writeSam_discordant(
     // use when redistribute the reads according to original rank
     // when sorting of offset sources is done
     int *source_rank_phase1,
-    size_t *read_coordinates,
-    size_t *read_mate_coordinates,
-    int *read_mate_scores,
-    int *read_Qname_keys,
-    unsigned int *read_flags,
-    unsigned int *read_pair_nums,
-    unsigned int *read_orientations, 
-    int *read_Lb,
-    int *read_chr_names,
-    int *read_chr_mate_names,
-    int *read_physical_location_x,
-    int *read_physical_location_y,
-    size_t *read_unclipped_positions,
+	size_t *read_coordinates,
+	size_t *read_mate_coordinates,
+    int *read_phred_scores,
+	int *read_mate_scores,
+	int *read_Qname_keys,
+	unsigned int *read_flags,
+	unsigned int *read_pair_nums,
+	unsigned int *read_orientations, 
+	int *read_mate_ranks,
+	int *read_Lb,
+	int *read_chr_names,
+	int *read_chr_mate_names,
+	int *read_physical_location_x,
+	int *read_physical_location_y,
+	size_t *read_unclipped_positions,
+	size_t *mate_unclipped_positions,
     char *data,
     size_t start_offset_in_file,
     size_t previous_local_readNum,
     size_t final_local_readNum,
     size_t *disc_dup_number,
-    int write_format, 
-    readInfo* chr
+	int write_format, 
+	readInfo* chr
 ) {
+
+
 
 
     /*
@@ -2376,6 +2646,22 @@ size_t * writeSam_discordant(
     int *pbs_read_size_phase1;
     int *pbs_dest_rank_phase1;
     int *pbs_orig_rank_off_phase1;
+    size_t *pbs_read_coordinates;
+    size_t *pbs_read_mate_coordinates;
+    int *pbs_read_phred_scores;
+    int *pbs_read_mate_scores;
+    int *pbs_read_Qname_keys;
+    unsigned int *pbs_read_flags;
+    unsigned int *pbs_read_pair_nums;
+    unsigned int *pbs_read_orientations;
+    int *pbs_read_mate_ranks;
+    int *pbs_read_Lb;
+    int *pbs_read_chr_names;
+    int *pbs_read_chr_mate_names;
+    int *pbs_read_physical_location_x;
+    int *pbs_read_physical_location_y;
+    size_t *pbs_read_unclipped_positions;
+    size_t *pbs_mate_unclipped_positions;
 
     /*
      * variables for first Bruck
@@ -2386,6 +2672,22 @@ size_t * writeSam_discordant(
     int    *new_pbs_read_size_phase1        = NULL;
     int    *new_pbs_dest_rank_phase1        = NULL;
     int    *new_pbs_orig_rank_off_phase1    = NULL;
+    size_t *new_pbs_read_coordinates        = NULL;
+    size_t *new_pbs_read_mate_coordinates   = NULL;
+    int *new_pbs_read_phred_scores          = NULL;
+    int *new_pbs_read_mate_scores           = NULL;
+    int *new_pbs_read_Qname_keys            = NULL;
+    unsigned int *new_pbs_read_flags        = NULL;
+    unsigned int *new_pbs_read_pair_nums    = NULL;
+    unsigned int *new_pbs_read_orientations = NULL;
+    int *new_pbs_read_mate_ranks            = NULL;
+    int *new_pbs_read_Lb                    = NULL;
+    int *new_pbs_read_chr_names             = NULL;
+    int *new_pbs_read_chr_mate_names        = NULL;
+    int *new_pbs_read_physical_location_x   = NULL;
+    int *new_pbs_read_physical_location_y   = NULL;
+    size_t *new_pbs_read_unclipped_positions = NULL;
+    size_t *new_pbs_mate_unclipped_positions = NULL;
 
     //size_t *local_offset_destination_bruck;       
     
@@ -2408,6 +2710,22 @@ size_t * writeSam_discordant(
     pbs_orig_rank_off_phase1 = calloc(max_num_read, sizeof(size_t));
     pbs_read_size_phase1     = calloc(max_num_read, sizeof(int));
     pbs_dest_rank_phase1     = calloc(max_num_read, sizeof(int));
+    pbs_read_coordinates     = calloc(max_num_read, sizeof(size_t));
+    pbs_read_mate_coordinates = calloc(max_num_read, sizeof(size_t));
+    pbs_read_phred_scores    = calloc(max_num_read, sizeof(int));
+    pbs_read_mate_scores     = calloc(max_num_read, sizeof(int));
+    pbs_read_Qname_keys      = calloc(max_num_read, sizeof(int));
+    pbs_read_flags           = calloc(max_num_read, sizeof(unsigned int));
+    pbs_read_pair_nums       = calloc(max_num_read, sizeof(unsigned int));
+    pbs_read_orientations    = calloc(max_num_read, sizeof(unsigned int));
+    pbs_read_mate_ranks      = calloc(max_num_read, sizeof(int));
+    pbs_read_Lb              = calloc(max_num_read, sizeof(int));
+    pbs_read_chr_names       = calloc(max_num_read, sizeof(int));
+    pbs_read_chr_mate_names  = calloc(max_num_read, sizeof(int));
+    pbs_read_physical_location_x = calloc(max_num_read, sizeof(int));
+    pbs_read_physical_location_y = calloc(max_num_read, sizeof(int));
+    pbs_read_unclipped_positions = calloc(max_num_read, sizeof(size_t));
+    pbs_mate_unclipped_positions = calloc(max_num_read, sizeof(size_t));
 
     size_t m = 0;
     int m2 = 0;
@@ -2418,6 +2736,23 @@ size_t * writeSam_discordant(
         pbs_read_size_phase1[m]     = read_size_phase1[m];
         pbs_dest_rank_phase1[m]     = dest_rank_phase1[m];
         pbs_orig_rank_off_phase1[m] = source_rank_phase1[m];
+        pbs_read_coordinates[m]     = read_coordinates[m];
+        pbs_read_mate_coordinates[m] = read_mate_coordinates[m];
+        pbs_read_phred_scores[m]    = read_phred_scores[m];
+        pbs_read_mate_scores[m]     = read_mate_scores[m];
+        pbs_read_Qname_keys[m]      = read_Qname_keys[m];
+        pbs_read_flags[m]           = read_flags[m];
+        pbs_read_pair_nums[m]       = read_pair_nums[m];
+        pbs_read_orientations[m]    = read_orientations[m];
+        pbs_read_mate_ranks[m]      = read_mate_ranks[m];
+        pbs_read_Lb[m]              = read_Lb[m];
+        pbs_read_chr_names[m]       = read_chr_names[m];
+        pbs_read_chr_mate_names[m]  = read_chr_mate_names[m];
+        pbs_read_physical_location_x[m] = read_physical_location_x[m];
+        pbs_read_physical_location_y[m] = read_physical_location_y[m];
+        pbs_read_unclipped_positions[m] = read_unclipped_positions[m];
+        pbs_mate_unclipped_positions[m] = mate_unclipped_positions[m];
+
     }
 
     free(offset_dest_phase1);
@@ -2425,6 +2760,23 @@ size_t * writeSam_discordant(
     free(read_size_phase1);
     free(dest_rank_phase1);
     free(source_rank_phase1);
+    free(read_coordinates);
+    free(read_mate_coordinates);
+    free(read_phred_scores);
+    free(read_mate_scores);
+    free(read_Qname_keys);
+    free(read_flags);
+    free(read_pair_nums);
+    free(read_orientations);
+    free(read_mate_ranks);
+    free(read_Lb);
+    free(read_chr_names);
+    free(read_chr_mate_names);
+    free(read_physical_location_x);
+    free(read_physical_location_y);
+    free(read_unclipped_positions);
+    free(mate_unclipped_positions);
+
 
     /*
      *
@@ -2447,7 +2799,7 @@ size_t * writeSam_discordant(
 
     // we sort source offsets
     time_count = MPI_Wtime();
-    ParallelBitonicSort2(
+    /*ParallelBitonicSort2(
         split_comm,
         rank,
         dimensions,
@@ -2457,7 +2809,37 @@ size_t * writeSam_discordant(
         pbs_offset_dest_phase1,
         pbs_orig_rank_off_phase1,
         max_num_read
+    );*/
+
+
+    ParallelBitonicSortAll2(
+        split_comm,
+        rank,
+        dimensions,
+        pbs_offset_source_phase1,
+        pbs_read_size_phase1,
+        pbs_dest_rank_phase1,
+        pbs_offset_dest_phase1,
+        pbs_read_coordinates,
+        pbs_orig_rank_off_phase1,
+        pbs_read_Qname_keys,
+        pbs_read_flags,
+        pbs_read_pair_nums,
+        pbs_read_orientations,
+        pbs_read_phred_scores,
+        pbs_read_mate_scores,
+        pbs_read_Lb,
+        pbs_read_chr_names,
+        pbs_read_chr_mate_names,
+        pbs_read_mate_ranks,
+        pbs_read_physical_location_x,
+        pbs_read_physical_location_y,
+        pbs_read_mate_coordinates,
+        pbs_read_unclipped_positions,
+        pbs_mate_unclipped_positions,
+        max_num_read
     );
+
 
     MPI_Barrier(split_comm);
 
@@ -2530,6 +2912,22 @@ size_t * writeSam_discordant(
         new_pbs_read_size_phase1        = calloc( (local_readNum - tmp2), sizeof(int));
         new_pbs_dest_rank_phase1        = calloc( (local_readNum - tmp2), sizeof(int));
         new_pbs_orig_rank_off_phase1    = calloc( (local_readNum - tmp2), sizeof(int));
+        new_pbs_read_coordinates        = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_read_mate_coordinates   = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_read_phred_scores       = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_mate_scores        = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_Qname_keys         = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_flags              = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_read_pair_nums          = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_read_orientations       = calloc((local_readNum - tmp2), sizeof(unsigned int));
+        new_pbs_read_mate_ranks         = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_Lb                 = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_chr_names          = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_chr_mate_names     = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_physical_location_x = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_physical_location_y = calloc((local_readNum - tmp2), sizeof(int));
+        new_pbs_read_unclipped_positions = calloc((local_readNum - tmp2), sizeof(size_t));
+        new_pbs_mate_unclipped_positions = calloc((local_readNum - tmp2), sizeof(size_t));
 
         for (j = 0; j < (local_readNum - tmp2); j++) {
             new_pbs_offset_source_phase1[j] = pbs_offset_source_phase1[j + tmp2];
@@ -2537,6 +2935,22 @@ size_t * writeSam_discordant(
             new_pbs_dest_rank_phase1[j]     = pbs_dest_rank_phase1[j + tmp2];
             new_pbs_orig_rank_off_phase1[j] = pbs_orig_rank_off_phase1[j + tmp2];
             new_pbs_offset_dest_phase1[j]   = pbs_offset_dest_phase1[j + tmp2];
+            new_pbs_read_coordinates[j]     = pbs_read_coordinates[j + tmp2];
+            new_pbs_read_mate_coordinates[j]= pbs_read_mate_coordinates[j + tmp2];
+            new_pbs_read_phred_scores[j]    = pbs_read_phred_scores[j + tmp2];
+            new_pbs_read_mate_scores[j]     = pbs_read_mate_scores[j + tmp2];
+            new_pbs_read_Qname_keys[j]      = pbs_read_Qname_keys[j + tmp2];
+            new_pbs_read_flags[j]           = pbs_read_flags[j + tmp2];
+            new_pbs_read_pair_nums[j]       = pbs_read_pair_nums[j + tmp2];
+            new_pbs_read_orientations[j]    = pbs_read_orientations[j + tmp2];
+            new_pbs_read_mate_ranks[j]      = pbs_read_mate_ranks[j + tmp2];
+            new_pbs_read_Lb[j]              = pbs_read_Lb[j + tmp2];
+            new_pbs_read_chr_names[j]       = pbs_read_chr_names[j + tmp2];
+            new_pbs_read_chr_mate_names[j]  = pbs_read_chr_mate_names[j + tmp2];
+            new_pbs_read_physical_location_x[j] = pbs_read_physical_location_x[j + tmp2];
+            new_pbs_read_physical_location_y[j] = pbs_read_physical_location_y[j + tmp2];
+            new_pbs_read_unclipped_positions[j] = pbs_read_unclipped_positions[j + tmp2];
+            new_pbs_mate_unclipped_positions[j] = pbs_mate_unclipped_positions[j + tmp2];
         }
 
         /*
@@ -2563,6 +2977,22 @@ size_t * writeSam_discordant(
         new_pbs_read_size_phase1        = malloc(numItems * sizeof(int));
         new_pbs_dest_rank_phase1        = malloc(numItems * sizeof(int));
         new_pbs_orig_rank_off_phase1    = malloc(numItems * sizeof(int));
+        new_pbs_read_coordinates        = malloc(numItems * sizeof(size_t));
+        new_pbs_read_mate_coordinates   = malloc(numItems * sizeof(size_t));
+        new_pbs_read_phred_scores       = malloc(numItems * sizeof(int));
+        new_pbs_read_mate_scores        = malloc(numItems * sizeof(int));
+        new_pbs_read_Qname_keys         = malloc(numItems * sizeof(int));
+        new_pbs_read_flags              = malloc(numItems * sizeof(unsigned int));
+        new_pbs_read_pair_nums          = malloc(numItems * sizeof(unsigned int));
+        new_pbs_read_orientations       = malloc(numItems * sizeof(unsigned int));
+        new_pbs_read_mate_ranks         = malloc(numItems * sizeof(int));
+        new_pbs_read_Lb                 = malloc(numItems * sizeof(int));
+        new_pbs_read_chr_names          = malloc(numItems * sizeof(int));
+        new_pbs_read_chr_mate_names     = malloc(numItems * sizeof(int));
+        new_pbs_read_physical_location_x = malloc(numItems * sizeof(int));
+        new_pbs_read_physical_location_y = malloc(numItems * sizeof(int));
+        new_pbs_read_unclipped_positions = malloc(numItems * sizeof(size_t));
+        new_pbs_mate_unclipped_positions = malloc(numItems * sizeof(size_t));
 
         num_read_for_bruck = 0;
     }
@@ -2575,6 +3005,22 @@ size_t * writeSam_discordant(
     free(pbs_dest_rank_phase1);
     free(pbs_orig_rank_off_phase1);
     free(pbs_offset_dest_phase1);
+    free(pbs_read_coordinates);
+    free(pbs_read_mate_coordinates);
+    free(pbs_read_phred_scores);
+    free(pbs_read_mate_scores);
+    free(pbs_read_Qname_keys);
+    free(pbs_read_flags);
+    free(pbs_read_pair_nums);
+    free(pbs_read_orientations);
+    free(pbs_read_mate_ranks);
+    free(pbs_read_Lb);
+    free(pbs_read_chr_names);
+    free(pbs_read_chr_mate_names);
+    free(pbs_read_physical_location_x);
+    free(pbs_read_physical_location_y);
+    free(pbs_read_unclipped_positions);
+    free(pbs_mate_unclipped_positions);
     /*
      * Now we dipatch the vectors:
      *      read_size,
@@ -2595,6 +3041,7 @@ size_t * writeSam_discordant(
     unsigned int *read_flags_sorted_bruck               = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_pair_nums_sorted_bruck           = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_orientations_sorted_bruck        = malloc(previous_local_readNum * sizeof(unsigned int));
+    int *read_phred_scores_sorted_bruck                  = malloc(previous_local_readNum * sizeof(int));
     int *read_mate_scores_sorted_bruck                  = malloc(previous_local_readNum * sizeof(int));
     int *read_Lb_sorted_bruck                           = malloc(previous_local_readNum * sizeof(int));
     int *read_chr_names_sorted_bruck                    = malloc(previous_local_readNum * sizeof(int));
@@ -2604,6 +3051,7 @@ size_t * writeSam_discordant(
     size_t *read_coordinates_sorted_bruck               = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_mate_coordinates_sorted_bruck          = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_unclipped_positions_sorted_bruck       = malloc(previous_local_readNum * sizeof(size_t));
+    size_t *mate_unclipped_positions_sorted_bruck       = malloc(previous_local_readNum * sizeof(size_t));
 
 
     int num_proc = dimensions;
@@ -2629,19 +3077,21 @@ size_t * writeSam_discordant(
     int **read_size                 = malloc(sizeof(int *) * dimensions);
     int **dest_rank                 = malloc(sizeof(int *) * dimensions);
 
-    size_t **data_coordinates = malloc(sizeof(size_t *) * num_proc);
-    size_t **data_mate_coordinates = malloc(sizeof(size_t *) * num_proc);
-    size_t **data_unclipped_coordinates = malloc(sizeof(size_t *) * num_proc );
-    int **data_mate_score = malloc(sizeof(int *) * num_proc);
-    int **data_keys = malloc(sizeof(int *) * num_proc);
-    unsigned int **data_flags = malloc(sizeof(unsigned int *) * num_proc);
-    unsigned int **data_pair_nums = malloc(sizeof(unsigned int *) * num_proc);
-    unsigned int **data_orientations = malloc(sizeof(unsigned int *) * num_proc);
-    int **data_readLb = malloc(sizeof(int *) * num_proc);
-    int **data_chr = malloc(sizeof(int *) * num_proc);
-    int **data_mate_chr = malloc(sizeof(int *) * num_proc);
-    int **data_physical_location_x = malloc(sizeof(int *) * num_proc);
-    int **data_physical_location_y = malloc(sizeof(int *) * num_proc);
+    size_t **data_coordinates = malloc(sizeof(size_t *) * dimensions);
+    size_t **data_mate_coordinates = malloc(sizeof(size_t *) * dimensions);
+    size_t **data_unclipped_coordinates = malloc(sizeof(size_t *) * dimensions );
+    int **data_mate_score = malloc(sizeof(int *) * dimensions);
+    int **data_keys = malloc(sizeof(int *) * dimensions);
+    unsigned int **data_flags = malloc(sizeof(unsigned int *) * dimensions);
+    unsigned int **data_pair_nums = malloc(sizeof(unsigned int *) * dimensions);
+    unsigned int **data_orientations = malloc(sizeof(unsigned int *) * dimensions);
+    int **data_readLb = malloc(sizeof(int *) * dimensions);
+    int **data_chr = malloc(sizeof(int *) * dimensions);
+    int **data_mate_chr = malloc(sizeof(int *) * dimensions);
+    int **data_physical_location_x = malloc(sizeof(int *) * dimensions);
+    int **data_physical_location_y = malloc(sizeof(int *) * dimensions);
+    int **data_phred_scores = malloc(sizeof(int *) * dimensions);
+    size_t **data_mate_unclipped_coordinates = malloc(sizeof(size_t *) * dimensions);
 
 
     /*
@@ -2680,31 +3130,35 @@ size_t * writeSam_discordant(
         &local_source_offsets,
         new_pbs_read_size_phase1,
         &read_size,
-        read_coordinates,
+        new_pbs_read_coordinates,
         &data_coordinates,
-        read_mate_coordinates,
+        new_pbs_read_mate_coordinates,
         &data_mate_coordinates,
-        read_unclipped_positions,
+        new_pbs_read_unclipped_positions,
         &data_unclipped_coordinates,
-        read_mate_scores,
+        new_pbs_mate_unclipped_positions,
+        &data_mate_unclipped_coordinates,
+        new_pbs_read_phred_scores,
+        &data_phred_scores,
+        new_pbs_read_mate_scores,
         &data_mate_score,
-        read_Qname_keys,
+        new_pbs_read_Qname_keys,
         &data_keys,
-        read_flags,
+        new_pbs_read_flags,
         &data_flags,
-        read_pair_nums,
+        new_pbs_read_pair_nums,
         &data_pair_nums,
-        read_orientations,
+        new_pbs_read_orientations,
         &data_orientations,
-        read_Lb,
+        new_pbs_read_Lb,
         &data_readLb,
-        read_chr_names,
+        new_pbs_read_chr_names,
         &data_chr,
-        read_chr_mate_names,
+        new_pbs_read_chr_mate_names,
         &data_mate_chr,
-        read_physical_location_x,
+        new_pbs_read_physical_location_x,
         &data_physical_location_x,
-        read_physical_location_y,
+        new_pbs_read_physical_location_y,
         &data_physical_location_y
     );
 
@@ -2713,19 +3167,21 @@ size_t * writeSam_discordant(
     free(new_pbs_read_size_phase1);
     free(new_pbs_dest_rank_phase1);
     free(new_pbs_orig_rank_off_phase1);
-    free(read_coordinates);
-    free(read_mate_coordinates);
-    free(read_unclipped_positions);
-    free(read_mate_scores);
-    free(read_Qname_keys);
-    free(read_flags);
-    free(read_pair_nums);
-    free(read_orientations);
-    free(read_Lb);
-    free(read_chr_names);
-    free(read_chr_mate_names);
-    free(read_physical_location_x);
-    free(read_physical_location_y);
+    free(new_pbs_read_coordinates);
+    free(new_pbs_read_mate_coordinates);
+    free(new_pbs_read_unclipped_positions);
+    free(new_pbs_read_mate_scores);
+    free(new_pbs_read_Qname_keys);
+    free(new_pbs_read_flags);
+    free(new_pbs_read_pair_nums);
+    free(new_pbs_read_orientations);
+    free(new_pbs_read_Lb);
+    free(new_pbs_read_chr_names);
+    free(new_pbs_read_chr_mate_names);
+    free(new_pbs_read_physical_location_x);
+    free(new_pbs_read_physical_location_y);
+    free(new_pbs_read_phred_scores);
+    free(new_pbs_mate_unclipped_positions);
 
     /*
      * Now get the offset source, destination and sizes
@@ -2757,12 +3213,14 @@ size_t * writeSam_discordant(
             read_chr_names_sorted_bruck[k + j]              = data_chr[m2][k];
             read_chr_mate_names_sorted_bruck[k + j]         = data_mate_chr[m2][k];
             read_Lb_sorted_bruck[k + j]                     = data_readLb[m2][k];
+            read_phred_scores_sorted_bruck[k + j]           = data_phred_scores[m2][k];
             read_mate_scores_sorted_bruck[k + j]            = data_mate_score[m2][k];
             read_physical_location_x_sorted_bruck[k + j]    = data_physical_location_x[m2][k];
             read_physical_location_y_sorted_bruck[k + j]    = data_physical_location_y[m2][k];
             read_mate_coordinates_sorted_bruck[k + j]       = data_mate_coordinates[m2][k];
             read_coordinates_sorted_bruck[k + j]            = data_coordinates[m2][k];
             read_unclipped_positions_sorted_bruck[k + j]    = data_unclipped_coordinates[m2][k];
+            mate_unclipped_positions_sorted_bruck[k + j]    = data_mate_unclipped_coordinates[m2][k];
         }
 
         free(local_source_offsets[m2]);
@@ -2776,12 +3234,14 @@ size_t * writeSam_discordant(
         free(data_chr[m2]);
         free(data_mate_chr[m2]);
         free(data_readLb[m2]);
+        free(data_phred_scores[m2]);
         free(data_mate_score[m2]);
         free(data_physical_location_x[m2]);
         free(data_physical_location_y[m2]);
         free(data_mate_coordinates[m2]);
         free(data_coordinates[m2]);
         free(data_unclipped_coordinates[m2]);
+        free(data_mate_unclipped_coordinates[m2]);
         j += number_of_reads_by_procs[m2];
 
     }
@@ -2812,6 +3272,7 @@ size_t * writeSam_discordant(
     unsigned int *read_flags_sorted_bruck2               = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_pair_nums_sorted_bruck2           = malloc(previous_local_readNum * sizeof(unsigned int));
     unsigned int *read_orientations_sorted_bruck2        = malloc(previous_local_readNum * sizeof(unsigned int));
+    int *read_phred_scores_sorted_bruck2                 = malloc(previous_local_readNum * sizeof(int));
     int *read_mate_scores_sorted_bruck2                  = malloc(previous_local_readNum * sizeof(int));
     int *read_Lb_sorted_bruck2                           = malloc(previous_local_readNum * sizeof(int));
     int *read_chr_names_sorted_bruck2                    = malloc(previous_local_readNum * sizeof(int));
@@ -2821,6 +3282,7 @@ size_t * writeSam_discordant(
     size_t *read_coordinates_sorted_bruck2               = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_mate_coordinates_sorted_bruck2          = malloc(previous_local_readNum * sizeof(size_t));
     size_t *read_unclipped_positions_sorted_bruck2       = malloc(previous_local_readNum * sizeof(size_t));
+    size_t *mate_unclipped_positions_sorted_bruck2       = malloc(previous_local_readNum * sizeof(size_t));
     
     //We index data
     for (j = 0; j < previous_local_readNum; j++) {
@@ -2833,6 +3295,7 @@ size_t * writeSam_discordant(
         read_flags_sorted_bruck2[j]                         = read_flags_sorted_bruck[coord_index[j]];
         read_pair_nums_sorted_bruck2[j]                     = read_pair_nums_sorted_bruck[coord_index[j]];
         read_orientations_sorted_bruck2[j]                  = read_orientations_sorted_bruck[coord_index[j]];
+        read_phred_scores_sorted_bruck2[j]                  = read_phred_scores_sorted_bruck[coord_index[j]];
         read_mate_scores_sorted_bruck2[j]                   = read_mate_scores_sorted_bruck[coord_index[j]];
         read_Lb_sorted_bruck2[j]                            = read_Lb_sorted_bruck[coord_index[j]];
         read_chr_names_sorted_bruck2[j]                     = read_chr_names_sorted_bruck[coord_index[j]];
@@ -2842,6 +3305,7 @@ size_t * writeSam_discordant(
         read_coordinates_sorted_bruck2[j]                   = read_coordinates_sorted_bruck[coord_index[j]]; 
         read_mate_coordinates_sorted_bruck2[j]              = read_mate_coordinates_sorted_bruck[coord_index[j]]; 
         read_unclipped_positions_sorted_bruck2[j]           = read_unclipped_positions_sorted_bruck[coord_index[j]];
+        mate_unclipped_positions_sorted_bruck2[j]           = mate_unclipped_positions_sorted_bruck[coord_index[j]];
     }
 
     free(new_local_reads_sizes_sorted_bruck);
@@ -2861,6 +3325,8 @@ size_t * writeSam_discordant(
     free(read_coordinates_sorted_bruck);
     free(read_mate_coordinates_sorted_bruck);
     free(read_unclipped_positions_sorted_bruck);
+    free(read_phred_scores_sorted_bruck);
+    free(mate_unclipped_positions_sorted_bruck);
     free(coord_index);
 
     malloc_trim(0);
@@ -2953,6 +3419,14 @@ size_t * writeSam_discordant(
 
     if (data_coordinates != NULL) {
         free(data_coordinates);
+    }
+
+    if (data_mate_unclipped_coordinates != NULL) {
+        free(data_mate_unclipped_coordinates);
+    }
+
+    if (data_phred_scores != NULL) {
+        free(data_phred_scores);
     }
 
     /*
@@ -3274,6 +3748,8 @@ size_t * writeSam_discordant(
     char *char_buff_uncompressed_with_duplicates = NULL;
     size_t *disc_dup_offset_source = NULL;
 
+
+
     char_buff_uncompressed_with_duplicates = markDuplicateDiscordant2 (char_buff_uncompressed, 
                                                             previous_local_readNum, 
                                                             header, 
@@ -3285,6 +3761,7 @@ size_t * writeSam_discordant(
                                                             read_flags_sorted_bruck2,
                                                             read_pair_nums_sorted_bruck2,
                                                             read_orientations_sorted_bruck2,
+                                                            read_phred_scores_sorted_bruck2,
                                                             read_mate_scores_sorted_bruck2,
                                                             read_Lb_sorted_bruck2,
                                                             read_chr_names_sorted_bruck2,
@@ -3293,7 +3770,8 @@ size_t * writeSam_discordant(
                                                             read_physical_location_y_sorted_bruck2,
                                                             read_mate_coordinates_sorted_bruck2,
                                                             read_coordinates_sorted_bruck2,
-                                                            read_unclipped_positions_sorted_bruck,
+                                                            read_unclipped_positions_sorted_bruck2,
+                                                            mate_unclipped_positions_sorted_bruck2,
                                                             chr);
     
 

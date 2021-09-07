@@ -47,6 +47,7 @@ void get_mate_informations(
 	readInfo *data_chr,
 	size_t local_readNum,
 	size_t *mate_coordinates, 
+	int *read_scores,
 	int *mates_scores, 
 	int *qname_keys, 
 	unsigned int *flags, 
@@ -57,7 +58,8 @@ void get_mate_informations(
 	int *mates_chr_names,
 	int *positions_x,
 	int *positions_y,
-	size_t *unclipped_positions);
+	size_t *unclipped_positions,
+	size_t *mate_unclipped_positions);
 
 
 size_t init_coordinates_and_size(

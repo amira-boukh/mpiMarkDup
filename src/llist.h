@@ -65,4 +65,5 @@ readInfo* llist_delete_ptr(llist_t *l, lnode_t* p) ;
 readInfo* llist_delete(llist_t* l, int n);
 void  llist_readInfo_print(llist_t* l, MPI_Comm comm);
 lnode_t*  llist_lsearch(llist_t* l, int n);
+lnode_t *llist_append2(llist_t *l, readInfo *e);
 #endif /* ifndef LLIST_H */

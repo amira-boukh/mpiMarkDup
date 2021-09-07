@@ -160,6 +160,7 @@ size_t parseLibrariesDiscordant(char *bufferReads,
                                 size_t readIndex, 
                                 chrInfo *chr, 
                                 lbInfo *lb,
+                                readInfo *reads,
                                 size_t *disc_offsets_source, 
                                 MPI_Comm comm) {
     int rank, num_proc;
@@ -170,7 +171,9 @@ size_t parseLibrariesDiscordant(char *bufferReads,
     int percentage = 1, increment = 10;
     size_t readCounter = readIndex;
     float progression = 0;
-    readInfo *read = NULL;
+    readInfo *read = malloc(sizeof(readInfo));
+    read = NULL;
+
 
     /**
      * Allocate two array :
@@ -190,14 +193,15 @@ size_t parseLibrariesDiscordant(char *bufferReads,
 
     size_t readEndscall = 0;
     size_t counter = 0;
-    while (*q) {
+    while (reads) {
         progression = 100 * ((float)readCounter / readNum);
         char *tok;
 
         // parse read
         getLine(&q, &tok);
-        read = readParsingDiscordant(tok, intervalByProc, readCounter, counter, chr, lb, disc_offsets_source, comm);
+        //read = readParsingDiscordant(tok, intervalByProc, readCounter, counter, chr, lb, disc_offsets_source, comm);
         
+        read = reads;
         counter++;
 
         if (read) {
@@ -205,23 +209,34 @@ size_t parseLibrariesDiscordant(char *bufferReads,
         }
 
         // insert and cluster read
-        unsigned int firstInPair, readPaired, mateUnmapped;
+        unsigned int firstInPair, readPaired, mateUnmapped, readUnmapped, secondaryAlignment, supplementaryAlignment ;
 
         if (read)  {
             assert(read->valueFlag);
+
             
+            readUnmapped = readBits((unsigned int)read->valueFlag, 2);
+            secondaryAlignment = readBits((unsigned int)read->valueFlag, 8);
+            supplementaryAlignment = readBits((unsigned int)read->valueFlag, 11);
             readPaired = readBits((unsigned int)read->valueFlag, 0);
             mateUnmapped = readBits((unsigned int)read->valueFlag, 3);
             firstInPair = readBits((unsigned int)read->valueFlag, 6);
+
 
             if (firstInPair)
                 read->pair_num = 1;
             else
                 read->pair_num = 2;
 
-            insertReadInList(fragList, read);
+            if (!supplementaryAlignment && !secondaryAlignment && !readUnmapped) {
+                insertReadInList(fragList, read);
+            }
 
-            if (readPaired && !mateUnmapped) {
+            if (mateUnmapped) {
+                read->mateChromosome = -1;
+            }
+
+            if (readPaired && !mateUnmapped && !supplementaryAlignment && !secondaryAlignment && !readUnmapped) {
                 k = kh_put_read(hash, read->Qname, &ret);
 
 
@@ -276,6 +291,9 @@ size_t parseLibrariesDiscordant(char *bufferReads,
             percentage += increment;
         }
 
+        reads = reads->next;
+
+
     }
 
     kh_destroy(read, hash);
@@ -284,10 +302,186 @@ size_t parseLibrariesDiscordant(char *bufferReads,
     //md_log_debug("Ensure reads mate rank which are susceptible in multiple processes ...\n");
     //ensureMateRank(*readArr, intervalByProc, readNum, comm);
 
+
     free(bufferReads);
     assert(readCounter - readIndex == readNum);
     return readCounter;
 }
+
+size_t parseLibrariesDiscordant2(char *bufferReads, 
+                    Interval *intervalByProc, 
+                    llist_t *fragList, 
+                    llist_t *readEndsList, 
+                    readInfo ***readArr, 
+                    char ***samTokenLines, 
+                    size_t readNum, 
+                    size_t readIndex, 
+                    chrInfo *chr, 
+                    lbInfo *lb,
+                    readInfo *reads, 
+                    int *qname_keys,
+                    unsigned int *flags,
+                    unsigned int *pair_nums,
+                    unsigned int *orientations,
+                    int *phred_scores,
+                    int *mate_scores,
+                    int *read_Lb,
+                    int *chr_names,
+                    int *chr_mate_names,
+                    int *physical_location_x, 
+                    int *physical_location_y,
+                    size_t *mate_coordinates,
+                    size_t *coordinates,
+                    size_t *unclipped_coordinates,
+                    size_t *mate_unclipped_coordinates,
+                    size_t *disc_offsets_source,
+                    MPI_Comm comm) {
+
+    
+    
+    int rank, num_proc;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &num_proc);
+
+    char *q = bufferReads;
+    size_t readCounter = readIndex, percentage = 1, increment = 10;
+    float progression = 0;
+    readInfo *read = NULL;
+
+    /**
+     * Allocate two array :
+     *  1. readArr :: readInfo* array
+     *  2. samTokenLines :: corresponding string array
+     *
+     *  If read is unmapped the read in readArr will be NULL.
+     * */
+
+    *readArr = malloc(readNum * sizeof(readInfo *));
+    *samTokenLines = malloc(readNum * sizeof(char *));
+
+    size_t splitLineSize = (readNum / SPLIT_FACTOR) + 1, splitNumber = 1;
+    khash_t(read)* hash = kh_init(read);
+    khint_t k;
+    int ret;
+    int i = 0;
+
+    size_t readEndscall = 0;
+    size_t counter = 0;
+    while (*q) {
+        progression = 100 * ((float)readCounter / readNum);
+        char *tok;
+        readInfo *read = calloc(1, sizeof(readInfo));
+
+        // parse read
+        getLine(&q, &tok);
+        //read = readParsing(tok, intervalByProc, readCounter, counter, chr, lb, disc_offsets_source, comm);
+        counter++;
+
+        read->qname_key = qname_keys[i];
+        read->valueFlag = flags[i];
+        read->pair_num = pair_nums[i];
+        read->orientation = orientations[i];
+        read->phred_score = phred_scores[i];
+        read->pairPhredScore = mate_scores[i];
+        read->readLb = read_Lb[i];
+        read->readChromosome = chr_names[i];
+        read->mateChromosome = chr_mate_names[i];
+        read->physicalLocation.x = physical_location_x[i];
+        read->physicalLocation.y = physical_location_y[i];
+        read->coordPos = coordinates[i];
+        read->coordMatePos = mate_coordinates[i];
+        read->unclippedCoordPos = unclipped_coordinates[i];
+        read->unclippedMateCoordPos = mate_unclipped_coordinates[i];
+        
+        if (read) {
+            chr->lastChr = read->readChromosome;
+        }
+
+        // insert and cluster read
+        unsigned int firstInPair, readPaired, mateUnmapped, readUnmapped, secondaryAlignment, supplementaryAlignment;
+
+        if (read)  {
+            assert(read->valueFlag);
+            //fprintf(stdout,"Qname : %s read counter : %ld read index : %ld\n",read->Qname, readCounter, read->indexAfterSort);
+
+            
+            read->indexAfterSort = readCounter;
+
+
+
+            readUnmapped = readBits((unsigned int)read->valueFlag, 2);
+            secondaryAlignment = readBits((unsigned int)read->valueFlag, 8);
+            supplementaryAlignment = readBits((unsigned int)read->valueFlag, 11);
+            readPaired = readBits((unsigned int)read->valueFlag, 0);
+            mateUnmapped = readBits((unsigned int)read->valueFlag, 3);
+            firstInPair = readBits((unsigned int)read->valueFlag, 6);
+
+            if (mateUnmapped) {
+                read->mateChromosome = -1;
+            }
+
+
+            if (firstInPair)
+                read->pair_num = 1;
+            else
+                read->pair_num = 2;
+
+             if (!supplementaryAlignment && !secondaryAlignment && !readUnmapped) {
+                insertReadInList(fragList, read);
+            }
+
+            if (!supplementaryAlignment && !secondaryAlignment && !readUnmapped && readPaired && !mateUnmapped) {
+                readInfo *end = calloc(1, sizeof(readInfo));
+
+                end->coordPos = read->coordMatePos;
+                end->coordMatePos = read->coordPos;
+                end->phred_score = read->pairPhredScore;
+                end->pairPhredScore = read->phred_score;
+                end->unclippedCoordPos = read->unclippedMateCoordPos;
+                end->unclippedMateCoordPos = read->unclippedCoordPos;
+                end->qname_key = read->qname_key;
+
+                buildReadEnds(end, read, readEndsList );
+
+                readEndscall++;
+            
+            }
+        }
+
+        i = i + 1;
+
+        (*samTokenLines)[readCounter - readIndex] = tok;
+
+        // keep memory constant by spliting
+        if (readCounter >= splitLineSize * splitNumber) {
+            size_t remainsSize = strlen(q) + 1;
+            memmove(bufferReads, q, remainsSize);
+            bufferReads = realloc(bufferReads, remainsSize);
+            q = bufferReads;
+            splitNumber++;
+        }
+
+        (*readArr)[readCounter - readIndex] = read;
+        readCounter++;
+
+        if (progression > percentage) {
+            md_log_debug("Parsed and sorted %.0f%% of reads\n", progression);
+            percentage += increment;
+        }
+
+    }
+    
+    free(bufferReads);
+    assert(readCounter - readIndex == readNum);
+
+   /* for (lnode_t *node = fragList->tail; node != fragList->head; node = node->prev) {
+        fprintf(stdout,"coordinates %zu UncPos %zu mUncPos %zu\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
+        //fragList_size++;
+    } */
+
+    return readCounter;
+}
+
 
 
 /**
@@ -693,7 +887,7 @@ void exchangeExternFragDiscordant(llist_t *fragList, llist_t *readEndsList, hash
  * @note See middle part of function generateDuplicateIndexes() in Markduplicates.java
  */
 
-void findDuplicaDiscordant(llist_t *fragList, llist_t *readEndsList, hashTable *htbl, int *totalDuplica, int *totalOpticalDuplicate, MPI_Comm comm) {
+void findDuplicaDiscordant(llist_t *fragList, llist_t *readEndsList, int *totalDuplica, int *totalOpticalDuplicate, MPI_Comm comm) {
 
     int rank, num_proc;
     MPI_Comm_rank(comm, &rank);
@@ -701,6 +895,7 @@ void findDuplicaDiscordant(llist_t *fragList, llist_t *readEndsList, hashTable *
     
     llist_t *nextCluster = llist_create();
     lnode_t *firstOfNextCluster = NULL;
+        
 
     for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
 
@@ -710,7 +905,7 @@ void findDuplicaDiscordant(llist_t *fragList, llist_t *readEndsList, hashTable *
         } else {
 
             if (nextCluster->size > 1) {                
-                markDuplicatePairs(nextCluster, htbl, totalDuplica, totalOpticalDuplicate);
+                markDuplicatePairs(nextCluster, totalDuplica, totalOpticalDuplicate);
             }
             llist_clear(nextCluster);
             llist_append(nextCluster, node->read);
@@ -718,12 +913,13 @@ void findDuplicaDiscordant(llist_t *fragList, llist_t *readEndsList, hashTable *
         }
     }
     if (nextCluster->size > 1) {
-        markDuplicatePairs(nextCluster, htbl, totalDuplica, totalOpticalDuplicate);
+        markDuplicatePairs(nextCluster, totalDuplica, totalOpticalDuplicate);
     }
     llist_clear(nextCluster);
     int containsPairs = 0;
     int containsFrags = 0;
     firstOfNextCluster = NULL;
+
        
     for (lnode_t *node = fragList->head; node != fragList->nil; node = node->next) {
 
@@ -827,6 +1023,7 @@ char *markDuplicateDiscordant (char *bufferReads,
                     readIndexOffset, 
                     &chr,  
                     &lb, 
+                    reads,
                     disc_offsets_source,
                     comm);
 
@@ -897,6 +1094,8 @@ char *markDuplicateDiscordant (char *bufferReads,
      * */
     llist_merge_sort(fragList, 1);
     llist_merge_sort(readEndsList, 0);
+    llist_merge_sort_qnames(fragList);
+    llist_merge_sort_qnames(readEndsList);
 
     /*
     size_t readEnds_size = 0;
@@ -924,7 +1123,7 @@ char *markDuplicateDiscordant (char *bufferReads,
     timeStamp = MPI_Wtime();
     int localDuplicates = 0, localOpticalDuplicates = 0, totalDuplicates = 0, totalOpticalDuplicates = 0;
     
-    findDuplicaDiscordant(fragList, readEndsList, htbl, &localDuplicates, &localOpticalDuplicates, comm) ;
+    findDuplicaDiscordant(fragList, readEndsList, &localDuplicates, &localOpticalDuplicates, comm) ;
     
 
 
@@ -1032,6 +1231,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
                                 unsigned int *flags,
                                 unsigned int *pair_nums,
                                 unsigned int *orientations,
+                                int *phred_scores,
                                 int *mate_scores,
                                 int *read_Lb,
                                 int *chr_names,
@@ -1041,10 +1241,13 @@ char *markDuplicateDiscordant2 (char *bufferReads,
                                 size_t *mate_coordinates,
                                 size_t *coordinates,
                                 size_t *unclipped_coordinates, 
+                                size_t *mate_unclipped_coordinates,
                                 readInfo* reads) {
 
     //MPI_Comm previousComm = md_get_log_comm();
     //md_set_log_comm(comm);
+
+
 
     int rank, num_proc;
     MPI_Comm_rank(comm, &rank);
@@ -1055,6 +1258,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     lbInfo lb;
     initChrInfo(&chr, header);
     initLbInfo(&lb, header);
+
 
     if (chr.chrNum == 0) {
         md_log_error("There isn't chromosome in the header, please check the input sam file.");
@@ -1078,7 +1282,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     timeStamp = MPI_Wtime();
     readInfo **readArr;
     char **samTokenLines;
-    parseLibrariesDiscordant(bufferReads, 
+    parseLibrariesDiscordant2(bufferReads, 
                     intervalByProc, 
                     fragList, 
                     readEndsList, 
@@ -1088,23 +1292,49 @@ char *markDuplicateDiscordant2 (char *bufferReads,
                     readIndexOffset, 
                     &chr,  
                     &lb, 
+                    reads,
+                    qname_keys,
+                    flags,
+                    pair_nums,
+                    orientations,
+                    phred_scores,
+                    mate_scores,
+                    read_Lb,
+                    chr_names,
+                    chr_mate_names,
+                    physical_location_x, 
+                    physical_location_y,
+                    mate_coordinates,
+                    coordinates,
+                    unclipped_coordinates,
+                    mate_unclipped_coordinates,
                     disc_offsets_source,
                     comm);
 
+    /*for(int i = 0; i < readNum ; i++){
+        fprintf(stderr,"line : %s\n",samTokenLines[i]);
+
+    }*/
+
+    for (lnode_t *node = fragList->head; node != fragList->nil; node = node->next) {
+        //fprintf(stdout,"coordinates %ld UncPos %ld mUncPos %ld\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
+        //fragList_size++;
+    }  
+
     md_log_debug("End of parsing and clustering %f seconds\n", MPI_Wtime() - timeStamp);
 
-    md_log_debug("Construct perfect hashing table ...\n");
+    //md_log_debug("Construct perfect hashing table ...\n");
     timeStamp = MPI_Wtime();
-    hashTable *htbl = malloc(sizeof(hashTable));
-    readInfo **readArrWithExternal;
+    //hashTable *htbl = malloc(sizeof(hashTable));
+    //readInfo **readArrWithExternal;
 
-    size_t totalReadWithFictitiousMate = fillReadAndFictitiousMate(readArr, &readArrWithExternal, readNum);
+    //size_t totalReadWithFictitiousMate = fillReadAndFictitiousMate(readArr, &readArrWithExternal, readNum);
     //fprintf(stderr, " totalReadWithFictitiousMate = %zu \n", totalReadWithFictitiousMate);
    
-    shareHpAndConstructHtbl(htbl, readArrWithExternal, totalReadWithFictitiousMate, comm);
-    free(readArrWithExternal);
+    //shareHpAndConstructHtbl(htbl, readArrWithExternal, totalReadWithFictitiousMate, comm);
+    //free(readArrWithExternal);
     
-    md_log_debug("Perfect hash table is constructed %f seconds\n", MPI_Wtime() - timeStamp);
+    //md_log_debug("Perfect hash table is constructed %f seconds\n", MPI_Wtime() - timeStamp);
 
 
     /**
@@ -1122,29 +1352,31 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     
     /* End TRACE */
 
-    md_log_debug("Start to exchange mates ...\n");
+    //md_log_debug("Start to exchange mates ...\n");
     timeStamp = MPI_Wtime();
-    exchangeExternFragDiscordant(fragList, readEndsList, htbl, comm) ;
-    md_log_debug("Finished to exchange mate in %f seconds\n", MPI_Wtime() - timeStamp);
+    //exchangeExternFragDiscordant(fragList, readEndsList, htbl, comm) ;
+    //md_log_debug("Finished to exchange mate in %f seconds\n", MPI_Wtime() - timeStamp);
 
 
-    /*
+    
     size_t fragList_size = 0;
     size_t readEnds_size = fragList_size = 0;
 
     for (lnode_t *node = fragList->head; node != fragList->nil; node = node->next) {
         //readCounter = readIndex,
+        fprintf(stdout,"coordinates %ld UncPos %ld mUncPos %ld\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
         //md_log_trace("lb=%zu, chr=%zu, unclippedCoordPos=%zu, orientation=%zu, mchr=%zu, mateUnclippedCoordPos=%zu, rindex=%zu, mindex=%zu\n", read->readLb, read->readChromosome, read->unclippedCoordPos, read->orientation, read->mateChromosome, read->coordMatePos, read->indexAfterSort, read->mateIndexAfterSort);
         fragList_size++;
     }
     
     for (lnode_t *node = readEndsList->head; node != readEndsList->nil; node = node->next) {
         //readInfo *read = node->read;
+        //fprintf(stdout,"coord %ld UncPos %ld mUncPos %ld\n",node->read->coordPos, node->read->unclippedCoordPos, node->read->unclippedMateCoordPos);
         //md_log_trace("lb=%zu, chr=%zu, unclippedCoordPos=%zu, orientation=%zu, mchr=%zu, mateUnclippedCoordPos=%zu, rindex=%zu, mindex=%zu\n", read->readLb, read->readChromosome, read->unclippedCoordPos, read->orientation, read->mateChromosome, read->coordMatePos, read->indexAfterSort, read->mateIndexAfterSort);
         readEnds_size++;
     }
 
-    fprintf(stderr, " TRACE 3 readEndsList size = %zu :::: fragList size =%zu \n", readEnds_size, fragList_size);
+    /*fprintf(stderr, " TRACE 3 readEndsList size = %zu :::: fragList size =%zu \n", readEnds_size, fragList_size);
     */
 
     md_log_debug("Start to sort fragments list and read ends list ...\n");
@@ -1158,7 +1390,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
      * */
     llist_merge_sort(fragList, 1);
     llist_merge_sort(readEndsList, 0);
-
+    
     /*
     size_t readEnds_size = 0;
     size_t fragList_size = 0;
@@ -1185,7 +1417,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     timeStamp = MPI_Wtime();
     int localDuplicates = 0, localOpticalDuplicates = 0, totalDuplicates = 0, totalOpticalDuplicates = 0;
     
-    findDuplicaDiscordant(fragList, readEndsList, htbl, &localDuplicates, &localOpticalDuplicates, comm) ;
+    findDuplicaDiscordant(fragList, readEndsList, &localDuplicates, &localOpticalDuplicates, comm) ;
     
 
 
@@ -1214,7 +1446,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     freeChrInfo(&chr);
     freeLbInfo(&lb);
 
-    hashTableDestroy(htbl);
+    //hashTableDestroy(htbl);
 
     //md_set_log_comm(previousComm);
 
@@ -1264,7 +1496,7 @@ char *markDuplicateDiscordant2 (char *bufferReads,
     *disc_dup_number = index_in_offset;
 
      /* free all reads and fragList */
-    llist_destruct(fragList);
+    //llist_destruct(fragList);
     /* free all nodes of readEndsList */
     llist_clear(readEndsList);
     /* free readEndsList */

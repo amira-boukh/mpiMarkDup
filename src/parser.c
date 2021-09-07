@@ -107,13 +107,17 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
     unsigned char quality;
     int i, chr, mchr, nbchr = 0;
     int lastChr = -1;
-    int next, mate_score, key;
+    int next, mate_score, key, score, phred_score, quality_string;
     size_t lineSize, offset_read_in_source_file;
     size_t coord, coord_mate,flag;
     size_t *readNumberByChr;
     size_t counter = 0;
     readInfo **reads = *preads;
-    char *qname;  
+    char *qname, *u;  
+    unsigned int readUnmapped;
+    unsigned int mateUnmapped;
+    unsigned int secondaryAlignment;
+    unsigned int supplementaryAlignment;
     unsigned int firstInPair;
     //lbInfo *lb; 
 
@@ -160,6 +164,7 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
         //currentCarac++;
         //currentCarac = strstr(currentCarac, "\t");
         flag = strtoull(currentCarac, &currentCarac,10);
+        assert(flag);
         currentCarac = strstr(currentCarac, "\t");
         //fprintf(stdout,"%d\n",flag);
         
@@ -217,8 +222,33 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
 
         currentCarac = strstr(currentCarac+1, "\t");
         currentCarac = strstr(currentCarac+1, "\t");
-        currentCarac = strstr(currentCarac+1, "\t");
         currentCarac = currentCarac +1;
+        getTokenTab(&currentCarac, &tokenCar);
+        quality_string = tokenCar;
+        u = tokenCar; 
+        score = 0;
+        phred_score = 0;
+
+        while (*u) {
+            score = fastqToPhred(*u);
+
+            /**
+             * Only take account base which has quality over 15
+             * See htsjdk/samtools/DuplicateScoringStrategy.java, function getSumOfBaseQualities
+             */
+
+            if (score >= 15) {
+                phred_score += (size_t)score;
+            }
+
+            u++;
+        }
+        //fprintf(stdout, "qname %s flag %d phred score : %d\n", qname, flag, phred_score);
+
+
+        //currentCarac = strstr(currentCarac+1, "\t");
+        
+
 
 
         
@@ -230,7 +260,7 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
             if (strncmp(tokenCar, "ms:i:", strlen("ms:i:")) == 0) {
                 char *score = getReadTagValue(tokenCar, "ms:i:");
                 mate_score = strtoull(score,&score, 10); 
-
+                //fprintf(stdout,"mate score : %d\n", mate_score);
             }
             if (strncmp(tokenCar, "LB:Z:", strlen("LB:Z:")) == 0) {
             //fillReadLBValue(tokenCar, read);
@@ -266,18 +296,37 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
 
                 reads[chr]->next = malloc(sizeof(readInfo));
                 reads[chr]->next->Qname = qname;
+                reads[chr]->next->phred_score = min(phred_score, (int) (0x7FFF / 2));
+                reads[chr]->next->pairPhredScore = mate_score;
+                reads[chr]->next->qname_key = key;
                 reads[chr]->next->valueFlag = flag;
                 reads[chr]->next->coordPos = coord;
                 reads[chr]->next->coordMatePos = coord_mate;
                 reads[chr]->next->readChromosome = chr;
                 reads[chr]->next->mateChromosome = mchr;
+                reads[chr]->next->discordant = 0;
                 reads[chr]->next->quality = quality;
                 reads[chr]->next->cigar = cigar;
                 reads[chr]->next->mate_cigar = cigar_mate;
                 reads[chr]->next->offset_source_file = offset_read_in_source_file;
                 reads[chr]->next->offset = lineSize;
-                fillUnclippedCoord(reads[chr]->next);
-                reads[chr]->next->orientation = getOrientation(reads[chr]->next, 0);
+                reads[chr]->next->discordant = 0;
+                if ( strcmp(cigar, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[chr]->next->readChromosome = -1;
+
+                } else {
+                    fillUnclippedCoord(reads[chr]->next);
+                }
+
+                if ( strcmp(cigar_mate, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[chr]->next->mateChromosome = -1;
+
+                } else {
+                    fillMateUnclippedCoord(reads[chr]->next);
+                }
+                
                 if (optical_distance > 0) {
                     reads[chr]->next->physicalLocation = computePhysicalLocation(reads[chr]->next);
                 }
@@ -289,9 +338,31 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
 
                 reads[chr]->next->fingerprint = read2Fingerprint(reads[chr]->next);
                 reads[chr]->next->mate_fingerprint = read2mateFP(reads[chr]->next);
+
+                assert(reads[chr]->next->valueFlag);    
+		        readUnmapped = readBits((unsigned int)reads[chr]->next->valueFlag, 2);
+                mateUnmapped = readBits((unsigned int)reads[chr]->next->valueFlag, 3);
+                secondaryAlignment = readBits((unsigned int)reads[chr]->next->valueFlag, 8);
+                supplementaryAlignment = readBits((unsigned int)reads[chr]->next->valueFlag, 11);
+                firstInPair = readBits((unsigned int)reads[chr]->next->valueFlag, 6);
+
+                if (firstInPair == 1)
+                    reads[chr]->next->pair_num = 1;
+                else
+                    reads[chr]->next->pair_num = 2;
+
+
+                if (mateUnmapped) {
+                    reads[chr]->next->mateChromosome = -1;
+                }
+
+                reads[chr]->next->orientation = getOrientation(reads[chr]->next, 0);
+                
+                //fprintf(stdout,"coord %ld coordUnc %ld mateCoordUnc %ld\n",reads[chr]->next->coordPos,reads[chr]->next->unclippedCoordPos, reads[chr]->next->unclippedMateCoordPos);
+
+
                 reads[chr] = reads[chr]->next;
                 readNumberByChr[chr]++;
-                //fprintf(stdout,"flag %ld rmane %d quality %d\n",flag,chr,quality);
             }
 
         } else if ((chr < (nbchr - 2)) && ( mchr < (nbchr - 2))) {
@@ -303,17 +374,36 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
                 reads[nbchr - 1]->next = malloc(sizeof(readInfo));
                 reads[nbchr - 1]->next->Qname = qname;
                 reads[nbchr - 1]->next->valueFlag = flag;
+                reads[nbchr - 1]->next->phred_score = min(phred_score, (int) (0x7FFF / 2));
+                reads[nbchr - 1]->next->pairPhredScore = mate_score;
+                reads[nbchr - 1]->next->qname_key = key;
                 reads[nbchr - 1]->next->coordPos = coord;
                 reads[nbchr - 1]->next->coordMatePos = coord_mate;
                 reads[nbchr - 1]->next->readChromosome = chr;
                 reads[nbchr - 1]->next->mateChromosome = mchr;
+                reads[nbchr - 1]->next->discordant = 1;
                 reads[nbchr - 1]->next->cigar = cigar;
                 reads[nbchr - 1]->next->mate_cigar = cigar_mate;
                 reads[nbchr - 1]->next->quality = quality;
                 reads[nbchr - 1]->next->offset_source_file = offset_read_in_source_file;
                 reads[nbchr - 1]->next->offset = lineSize;
+                reads[nbchr - 1]->next->discordant = 1;
                 reads[nbchr - 1]->next->orientation = getOrientation(reads[nbchr - 1]->next, 0);
-                fillUnclippedCoord(reads[nbchr - 1]->next);
+                if ( strcmp(cigar, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[nbchr - 1]->next->readChromosome = -1;
+
+                } else {
+                    fillUnclippedCoord(reads[nbchr - 1]->next);
+                }
+
+                if ( strcmp(cigar_mate, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[nbchr - 1]->next->mateChromosome = -1;
+
+                } else {
+                    fillMateUnclippedCoord(reads[nbchr - 1]->next);
+                }
                 if (optical_distance > 0) {
                     reads[nbchr - 1]->next->physicalLocation = computePhysicalLocation(reads[nbchr-1]->next);
                 }
@@ -331,18 +421,37 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
                 //as we want to keep it in the bam
                 reads[chr]->next = malloc(sizeof(readInfo));
                 reads[chr]->next->Qname = qname;
+                reads[chr]->next->qname_key = key;
+                reads[chr]->next->phred_score = min(phred_score, (int) (0x7FFF / 2));
+                reads[chr]->next->pairPhredScore = mate_score;
                 reads[chr]->next->valueFlag = flag;
                 reads[chr]->next->coordPos = coord;
                 reads[chr]->next->coordMatePos = coord_mate;
                 reads[chr]->next->quality = quality;
                 reads[chr]->next->readChromosome = chr;
                 reads[chr]->next->mateChromosome = mchr;
+                reads[chr]->next->discordant = 1;
                 reads[chr]->next->cigar = cigar;
                 reads[chr]->next->mate_cigar = cigar_mate;
                 reads[chr]->next->offset_source_file = offset_read_in_source_file;
                 reads[chr]->next->offset = lineSize;
+                reads[chr]->next->discordant = 1;
                 reads[chr]->next->orientation = getOrientation(reads[chr]->next, 0);
-                fillUnclippedCoord(reads[chr]->next);
+                if ( strcmp(cigar, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[chr]->next->readChromosome = -1;
+
+                } else {
+                    fillUnclippedCoord(reads[chr]->next);
+                }
+
+                if ( strcmp(cigar_mate, "*") == 0 ) {
+                    //shall not be marked as duplicate but it's mate yes
+                    reads[chr]->next->mateChromosome = -1;
+
+                } else {
+                    fillMateUnclippedCoord(reads[chr]->next);
+                }
                 if (optical_distance > 0) {
                     reads[chr]->next->physicalLocation = computePhysicalLocation(reads[chr]->next);
                 }
@@ -353,6 +462,9 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
                     reads[chr]->next->pair_num = 2;
                 reads[chr]->next->fingerprint = read2Fingerprint(reads[chr]->next);
                 reads[chr]->next->mate_fingerprint = read2mateFP(reads[chr]->next);
+
+                //fprintf(stdout,"coord %ld coordUnc %ld mateCoordUnc %ld\n",reads[chr]->next->coordPos,reads[chr]->next->unclippedCoordPos, reads[chr]->next->unclippedMateCoordPos);
+
                 reads[chr] = reads[chr]->next;
                 readNumberByChr[chr]++;
       
@@ -394,6 +506,8 @@ void parser_paired(char *localData, int rank, size_t start_offset, unsigned char
             reads[nbchr - 2] = reads[nbchr - 2]->next;
             readNumberByChr[nbchr - 2]++;
         }
+
+
 
 
 

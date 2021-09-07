@@ -298,6 +298,17 @@ static void llist_insert_ptr(lnode_t *node, lnode_t *x) {
     pn->next->prev = x;
     pn->next = x;
     x->prev = pn;
+
+}
+
+static void llist_insert_ptr2(lnode_t *node, lnode_t *x) {
+    lnode_t *pn = node->prev;
+    x->next = pn->next;
+    pn->next->prev = x;
+    pn->next = x;
+    x->prev = pn;
+    //fprintf(stdout,"coordinates %ld UncPos %ld mUncPos %ld\n",x->read->coordPos, x->read->unclippedCoordPos, x->read->unclippedMateCoordPos);
+
 }
 
 /**
@@ -380,6 +391,24 @@ lnode_t *llist_append(llist_t *l, readInfo *e) {
     return node;
 }
 
+lnode_t *llist_append2(llist_t *l, readInfo *e) {
+    lnode_t *node = malloc(sizeof(lnode_t));
+    assert(node);
+    node->read = e;
+    llist_insert_ptr2(l->nil, node);
+
+    if (l->size == 0) {
+        l->head = node;
+    }
+
+    l->tail = node;
+    l->size++;
+
+    //fprintf(stdout,"coordinates %zu UncPos %zu mUncPos %zu\n",node->next->read->coordPos, node->next->read->unclippedCoordPos, node->next->read->unclippedMateCoordPos);
+    
+    return node;
+}
+
 /**
  * @date 2018 Apr. 19
  * @brief Print a readInfo list
@@ -399,7 +428,7 @@ void llist_readInfo_print(llist_t *l, MPI_Comm comm) {
     lnode_t *x = l->nil->next;
 
     for (int i = 0; i < l->size; i++) {
-        offset += sprintf(buffer + offset, "[%s#%zu]<->", x->read->Qname, x->read->unclippedCoordPos);
+        offset += sprintf(buffer + offset, "[%zu#%zu]<->", x->read->coordPos, x->read->unclippedCoordPos);
         x = x->next;
     }
 
